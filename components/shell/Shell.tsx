@@ -16,8 +16,8 @@ interface ShellProps {
   noSprocket?: boolean
 }
 
-const MAX_W = 1080
-const SPROCKET_OFFSET = 56
+export const MAX_W = 1200
+const SPROCKET_OFFSET = 32
 
 function SprocketEdge() {
   return (
@@ -27,18 +27,18 @@ function SprocketEdge() {
     >
       {/* Vertical line */}
       <div
-        className="absolute left-6 top-0 bottom-0"
+        className="absolute left-4 top-0 bottom-0"
         style={{ width: 1, background: 'var(--border-subtle)' }}
       />
       {/* Sprocket holes — periodic dots */}
-      {Array.from({ length: 20 }, (_, i) => (
+      {Array.from({ length: 24 }, (_, i) => (
         <div
           key={i}
-          className="absolute left-[22px] rounded-full"
+          className="absolute left-[14px] rounded-full"
           style={{
-            top: `${8 + i * 64}px`,
-            width: 3,
-            height: 3,
+            top: `${12 + i * 56}px`,
+            width: 2,
+            height: 2,
             background: 'var(--border-subtle)',
           }}
         />
@@ -225,17 +225,17 @@ export function Sprocket({ noSprocket = false }: { noSprocket?: boolean }) {
       style={{ width: SPROCKET_OFFSET }}
     >
       <div
-        className="absolute left-6 top-0 bottom-0"
+        className="absolute left-4 top-0 bottom-0"
         style={{ width: 1, background: 'var(--border-subtle)' }}
       />
-      {Array.from({ length: 20 }, (_, i) => (
+      {Array.from({ length: 24 }, (_, i) => (
         <div
           key={i}
-          className="absolute left-[22px] rounded-full"
+          className="absolute left-[14px] rounded-full"
           style={{
-            top: `${8 + i * 64}px`,
-            width: 3,
-            height: 3,
+            top: `${12 + i * 56}px`,
+            width: 2,
+            height: 2,
             background: 'var(--border-subtle)',
           }}
         />

@@ -3,11 +3,9 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { ProjectListItem, ProjectDetail } from '@/lib/argon'
-import { Sprocket, TopBar } from '@/components/shell/Shell'
+import { Sprocket, TopBar, MAX_W } from '@/components/shell/Shell'
 
 type ViewState = 'loading' | 'ready' | 'empty' | 'error'
-
-const MAX_W = 1080
 
 function formatRelativeDate(iso: string): string {
   const then = new Date(iso)
@@ -15,11 +13,11 @@ function formatRelativeDate(iso: string): string {
   const diffMs = now.getTime() - then.getTime()
   const mins = Math.floor(diffMs / 60000)
   if (mins < 1) return 'just now'
-  if (mins < 60) return `${mins}m ago`
+  if (mins < 60) return `${mins}m`
   const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `${hrs}h ago`
+  if (hrs < 24) return `${hrs}h`
   const days = Math.floor(hrs / 24)
-  if (days < 30) return `${days}d ago`
+  if (days < 30) return `${days}d`
   return then.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
@@ -59,7 +57,7 @@ function getTotalDuration(project: ProjectDetail): string {
   return `${total}s`
 }
 
-function FilmStripRow({ project, onClick }: { project: ProjectListItem; onClick: () => void }) {
+function ProjectCard({ project, onClick }: { project: ProjectListItem; onClick: () => void }) {
   const [imgLoaded, setImgLoaded] = useState(false)
   const [detail, setDetail] = useState<ProjectDetail | null>(null)
 
@@ -84,20 +82,21 @@ function FilmStripRow({ project, onClick }: { project: ProjectListItem; onClick:
   const imgSrc = gridUrl || fallbackUrl
   const shotCount = detail ? getShotCount(detail) : 0
   const totalDur = detail ? getTotalDuration(detail) : null
+  const hasImage = !!imgSrc
 
   return (
     <button
       onClick={onClick}
-      className="group text-left w-full flex items-stretch gap-0 border transition-all duration-300 overflow-hidden"
+      className="group text-left w-full rounded overflow-hidden border transition-all duration-300 flex flex-col"
       style={{
         borderColor: 'var(--border-standard)',
         background: 'var(--surface-1)',
-        borderRadius: 3,
+        borderRadius: 4,
       }}
       onMouseEnter={e => {
         e.currentTarget.style.borderColor = 'var(--border-emphasis)'
-        e.currentTarget.style.boxShadow = '0 4px 24px rgba(170,136,68,0.08)'
-        e.currentTarget.style.transform = 'translateY(-1px)'
+        e.currentTarget.style.boxShadow = '0 4px 32px rgba(170,136,68,0.08)'
+        e.currentTarget.style.transform = 'translateY(-2px)'
       }}
       onMouseLeave={e => {
         e.currentTarget.style.borderColor = 'var(--border-standard)'
@@ -105,17 +104,17 @@ function FilmStripRow({ project, onClick }: { project: ProjectListItem; onClick:
         e.currentTarget.style.transform = 'translateY(0)'
       }}
     >
-      {/* Thumbnail — like a film frame */}
+      {/* Hero — contact sheet or first frame */}
       <div
         className="relative flex-none overflow-hidden"
-        style={{ width: 240, aspectRatio: '16/10', background: 'var(--surface-2)' }}
+        style={{ aspectRatio: '16/10', background: 'var(--surface-2)' }}
       >
-        {imgSrc ? (
+        {hasImage ? (
           <>
-            {!imgLoaded && <div className="absolute inset-0 shimmer" />}
+            {!imgLoaded && <div className="absolute inset-0 shimmer z-0" />}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={imgSrc}
+              src={imgSrc!}
               alt={project.title}
               className={`w-full h-full object-cover transition-opacity duration-500 ${imgLoaded ? 'opacity-100' : 'opacity-0'}`}
               onLoad={() => setImgLoaded(true)}
@@ -123,58 +122,75 @@ function FilmStripRow({ project, onClick }: { project: ProjectListItem; onClick:
             />
             {/* Hover overlay */}
             <div
-              className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center"
+              className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center z-10"
               style={{ background: 'rgba(8,8,8,0.55)' }}
             >
               <span
-                className="px-5 py-2 text-[10px] tracking-[0.2em] uppercase border"
+                className="px-6 py-2.5 text-[10px] tracking-[0.2em] uppercase border"
                 style={{ borderColor: 'var(--border-emphasis)', color: 'var(--text-primary)', borderRadius: 2 }}
               >
-                Open
+                Open Storyboard →
               </span>
             </div>
           </>
         ) : (
-          <div className="absolute inset-0 shimmer" />
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="text-center space-y-2">
+              <div className="flex items-center justify-center gap-1">
+                {Array.from({ length: 5 }, (_, i) => (
+                  <div
+                    key={i}
+                    className="rounded-full"
+                    style={{ width: 3, height: 3, background: 'var(--border-subtle)' }}
+                  />
+                ))}
+              </div>
+              <p className="text-[10px] tracking-[0.15em] uppercase" style={{ color: 'var(--text-muted)' }}>
+                No preview
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Frame count badge */}
+        {shotCount > 0 && (
+          <div
+            className="absolute bottom-3 right-3 px-2 py-1 rounded font-slate text-[10px] z-20"
+            style={{ background: 'rgba(0,0,0,0.75)', color: 'var(--accent-amber)' }}
+          >
+            {shotCount} frames · {totalDur}
+          </div>
         )}
       </div>
 
-      {/* Metadata — like a slate */}
-      <div className="flex-1 flex flex-col justify-between p-5">
-        <div className="space-y-2">
-          <div className="flex items-start justify-between gap-4">
-            <p className="text-sm font-light leading-snug" style={{ color: 'var(--text-primary)' }}>
-              {project.title}
-            </p>
-            <p className="text-[10px] font-slate flex-none pt-0.5" style={{ color: 'var(--text-muted)' }}>
-              {formatRelativeDate(project.created_at)}
-            </p>
-          </div>
-          {shotCount > 0 && totalDur && (
-            <p className="text-[10px] font-slate tracking-[0.15em] uppercase" style={{ color: 'var(--text-tertiary)' }}>
-              {shotCount} frames · {totalDur}
-            </p>
-          )}
+      {/* Metadata */}
+      <div className="flex-1 p-5 space-y-3">
+        <div>
+          <p className="text-base font-light leading-snug" style={{ color: 'var(--text-primary)' }}>
+            {project.title}
+          </p>
         </div>
 
-        <div className="flex items-center gap-3">
-          {/* Sprocket holes decorative */}
-          <div className="flex items-center gap-1">
-            {[0, 1, 2, 3, 4].map(i => (
-              <div
-                key={i}
-                className="rounded-full"
-                style={{
-                  width: 3,
-                  height: 3,
-                  background: 'var(--border-subtle)',
-                }}
-              />
-            ))}
+        <div className="flex items-center justify-between gap-3">
+          {/* Dates */}
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-slate" style={{ color: 'var(--text-muted)' }}>
+              {formatRelativeDate(project.updated_at)}
+            </span>
+            {project.updated_at !== project.created_at && (
+              <>
+                <span style={{ color: 'var(--border-subtle)' }}>·</span>
+                <span className="text-[10px] font-slate" style={{ color: 'var(--text-muted)' }}>
+                  created {formatRelativeDate(project.created_at)}
+                </span>
+              </>
+            )}
           </div>
-          <p className="text-[10px] font-slate" style={{ color: 'var(--text-muted)' }}>
+
+          {/* Project ID snippet */}
+          <span className="text-[10px] font-slate" style={{ color: 'var(--text-muted)' }}>
             {project.id.slice(0, 8)}
-          </p>
+          </span>
         </div>
       </div>
     </button>
@@ -185,7 +201,7 @@ function NewSessionButton({ onClick }: { onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      className="px-6 py-2 text-xs tracking-[0.2em] uppercase border transition-all duration-200"
+      className="px-5 py-2 text-xs tracking-[0.2em] uppercase border transition-all duration-200"
       style={{
         borderColor: 'var(--border-standard)',
         color: 'var(--text-secondary)',
@@ -224,7 +240,11 @@ export default function LandingPage() {
           setViewState('empty')
           return
         }
-        setProjects(list)
+        // Sort by updated_at descending (most recently worked on first)
+        const sorted = (list as ProjectListItem[]).sort(
+          (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+        )
+        setProjects(sorted)
         setViewState('ready')
       } catch (err) {
         if (cancelled) return
@@ -248,14 +268,14 @@ export default function LandingPage() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto w-full">
-        <div style={{ width: MAX_W, margin: '0 auto', paddingTop: 32, paddingBottom: 80 }}>
+        <div style={{ width: MAX_W, margin: '0 auto', paddingTop: 40, paddingBottom: 80 }}>
 
           {/* Loading */}
           {viewState === 'loading' && (
             <div className="flex flex-col items-center justify-center gap-6 py-32">
               <div className="h-8 w-8 rounded-full border-t animate-spin"
                 style={{ borderColor: 'var(--surface-2)', borderTopColor: 'var(--text-secondary)' }} />
-              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Loading projects...</p>
+              <p className="text-xs font-slate" style={{ color: 'var(--text-muted)' }}>Loading projects...</p>
             </div>
           )}
 
@@ -313,21 +333,29 @@ export default function LandingPage() {
             </div>
           )}
 
-          {/* Projects — film strip list */}
+          {/* Projects — card grid */}
           {viewState === 'ready' && projects.length > 0 && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between mb-2">
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
                 <p className="text-[10px] font-slate tracking-[0.15em] uppercase" style={{ color: 'var(--text-muted)' }}>
                   {projects.length} project{projects.length !== 1 ? 's' : ''}
                 </p>
+                <p className="text-[10px] font-slate" style={{ color: 'var(--text-muted)' }}>
+                  Sorted by last updated
+                </p>
               </div>
-              {projects.map(project => (
-                <FilmStripRow
-                  key={project.id}
-                  project={project}
-                  onClick={() => router.push(`/storyboard/${project.id}`)}
-                />
-              ))}
+              <div
+                className="grid gap-6"
+                style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(480px, 1fr))' }}
+              >
+                {projects.map(project => (
+                  <ProjectCard
+                    key={project.id}
+                    project={project}
+                    onClick={() => router.push(`/storyboard/${project.id}`)}
+                  />
+                ))}
+              </div>
             </div>
           )}
         </div>
