@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import {
   Music, Play, ArrowRight, ArrowLeft, Loader2, Check,
-  Download, ChevronRight, AlertCircle, Pencil,
+  Download, AlertCircle, ChevronDown,
 } from 'lucide-react'
 import type { SoundResult, SoundVariation, SoundTrackMood, ScriptDocument, VideoResult } from '@/lib/types'
 import { Sprocket, TopBar } from '@/components/shell/Shell'
@@ -82,39 +82,33 @@ function Waveform({
   )
 }
 
-// ─── Editable brief field ─────────────────────────────────────────────────────
+// ─── Inline editable field ────────────────────────────────────────────────────
 
 function BriefField({
   label,
   value,
   onChange,
-  readOnly = false,
   multiline = false,
+  placeholder = '',
 }: {
   label: string
   value: string
-  onChange?: (v: string) => void
-  readOnly?: boolean
+  onChange: (v: string) => void
   multiline?: boolean
+  placeholder?: string
 }) {
   return (
-    <div className="flex gap-5 py-4 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
-      <span
-        className="flex-none text-[10px] tracking-[0.2em] uppercase font-slate pt-0.5"
-        style={{ color: 'var(--text-muted)', width: 120 }}
-      >
+    <div className="space-y-2 py-6 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
+      <p className="text-[10px] tracking-[0.2em] uppercase font-slate" style={{ color: 'var(--text-muted)' }}>
         {label}
-      </span>
-      {readOnly ? (
-        <p className="text-sm font-light flex-1 leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-          {value || '—'}
-        </p>
-      ) : multiline ? (
+      </p>
+      {multiline ? (
         <textarea
           value={value}
-          onChange={e => onChange?.(e.target.value)}
+          onChange={e => onChange(e.target.value)}
+          placeholder={placeholder}
           rows={2}
-          className="flex-1 text-sm font-light leading-relaxed resize-none bg-transparent outline-none"
+          className="w-full text-sm font-light leading-relaxed resize-none bg-transparent outline-none"
           style={{
             color: 'var(--text-secondary)',
             caretColor: 'var(--text-primary)',
@@ -128,8 +122,9 @@ function BriefField({
         <input
           type="text"
           value={value}
-          onChange={e => onChange?.(e.target.value)}
-          className="flex-1 text-sm font-light bg-transparent outline-none"
+          onChange={e => onChange(e.target.value)}
+          placeholder={placeholder}
+          className="w-full text-sm font-light bg-transparent outline-none"
           style={{
             color: 'var(--text-secondary)',
             caretColor: 'var(--text-primary)',
@@ -328,6 +323,7 @@ export default function SoundPage() {
   const [playingId, setPlayingId] = useState<string | null>(null)
   const [approved, setApproved] = useState(false)
   const [elapsed, setElapsed] = useState(0)
+  const [promptOpen, setPromptOpen] = useState(false)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // ── Boot ──────────────────────────────────────────────────────────────────
@@ -452,128 +448,143 @@ export default function SoundPage() {
       {/* ── BRIEF STATE ── */}
       {pageState === 'brief' && (
         <div className="flex-1 overflow-y-auto w-full">
-          <div style={{ maxWidth: 900, margin: '0 auto', paddingTop: 36, paddingBottom: 100, paddingLeft: 40, paddingRight: 40 }}>
+          <div style={{ maxWidth: 860, margin: '0 auto', paddingTop: 40, paddingBottom: 120, paddingLeft: 40, paddingRight: 40 }}>
 
-            {/* Page header */}
-            <div className="mb-8">
-              <p className="text-[10px] tracking-[0.25em] uppercase font-slate mb-1.5" style={{ color: 'var(--text-muted)' }}>
-                Step 5 of 5
-              </p>
-              <h1 className="text-2xl font-display font-light" style={{ color: 'var(--text-primary)' }}>
-                Sound Engineering
-              </h1>
-            </div>
-
+            {/* Error */}
             {error && (
-              <div className="mb-6 rounded border px-4 py-3 flex items-center gap-3"
+              <div className="mb-8 rounded border px-4 py-3 flex items-center gap-3"
                 style={{ borderColor: 'rgba(204,68,68,0.2)', background: 'rgba(204,68,68,0.05)' }}>
                 <AlertCircle className="w-4 h-4 flex-none" style={{ color: 'var(--accent-red)' }} />
                 <p className="text-xs flex-1" style={{ color: 'var(--accent-red)' }}>{error}</p>
               </div>
             )}
 
-            <div className="grid gap-8" style={{ gridTemplateColumns: '1fr 280px' }}>
-              {/* Left — soundtrack brief */}
-              <div className="space-y-6">
-                {/* Brief card */}
-                <div
-                  className="rounded border overflow-hidden"
-                  style={{ borderColor: 'var(--border-standard)', background: 'var(--surface-1)' }}
+            <div className="grid gap-16" style={{ gridTemplateColumns: '1fr 240px' }}>
+
+              {/* ── Left — document ── */}
+              <div>
+                {/* Page header */}
+                <div className="mb-10">
+                  <p className="text-[10px] tracking-[0.25em] uppercase font-slate mb-2" style={{ color: 'var(--text-muted)' }}>
+                    Step 5 of 5
+                  </p>
+                  <h1 className="text-3xl font-display font-light leading-none mb-3" style={{ color: 'var(--text-primary)' }}>
+                    Sound Engineering
+                  </h1>
+                  {/* Genre tag + meta line */}
+                  <div className="flex items-center gap-3">
+                    {genre && (
+                      <span
+                        className="text-[9px] tracking-[0.2em] uppercase font-slate px-2 py-1 rounded border"
+                        style={{ color: 'var(--accent-amber)', borderColor: 'rgba(170,136,68,0.3)', background: 'rgba(170,136,68,0.06)' }}
+                      >
+                        {genre}
+                      </span>
+                    )}
+                    <span className="text-[10px] font-slate" style={{ color: 'var(--text-muted)' }}>
+                      30s · Music only · No vocals
+                    </span>
+                  </div>
+                </div>
+
+                {/* Section label + amber rule */}
+                <div className="flex items-center gap-4 mb-1">
+                  <p className="text-[10px] tracking-[0.25em] uppercase font-slate flex-none" style={{ color: 'var(--text-muted)' }}>
+                    Soundtrack Brief
+                  </p>
+                  <div className="flex-1 h-px" style={{ background: 'var(--accent-amber)', opacity: 0.3 }} />
+                  <p className="text-[10px] font-slate flex-none" style={{ color: 'var(--text-muted)' }}>
+                    Extracted from your script — edit any field
+                  </p>
+                </div>
+
+                {/* Fields — bare, no card wrapper */}
+                <BriefField
+                  label="Tone & mood"
+                  value={tone}
+                  onChange={v => { setTone(v); setMood(v) }}
+                  placeholder="e.g. Dark, gritty, building tension"
+                />
+                <BriefField
+                  label="Narrative arc"
+                  value={narrativeArc}
+                  onChange={setNarrativeArc}
+                  multiline
+                  placeholder="e.g. Setup (8s) → Confrontation (14s) → Resolution (8s)"
+                />
+                <BriefField
+                  label="Visual style"
+                  value={visualStyle}
+                  onChange={setVisualStyle}
+                  multiline
+                  placeholder="e.g. High contrast, noir, handheld"
+                />
+
+                {/* Additional direction — bare textarea, no box */}
+                <div className="py-6">
+                  <p className="text-[10px] tracking-[0.2em] uppercase font-slate mb-2" style={{ color: 'var(--text-muted)' }}>
+                    Additional direction
+                    <span className="ml-2 normal-case tracking-normal" style={{ color: 'var(--text-muted)', opacity: 0.6 }}>
+                      — optional
+                    </span>
+                  </p>
+                  <textarea
+                    value={additionalDirection}
+                    onChange={e => setAdditionalDirection(e.target.value)}
+                    placeholder={`e.g. "Sparse at the start, full orchestra at the climax — Hans Zimmer style"`}
+                    rows={2}
+                    className="w-full text-sm font-light leading-relaxed resize-none bg-transparent outline-none"
+                    style={{
+                      color: 'var(--text-secondary)',
+                      caretColor: 'var(--text-primary)',
+                      borderBottom: '1px solid transparent',
+                      transition: 'border-color 0.15s',
+                    }}
+                    onFocus={e => (e.target.style.borderBottomColor = 'var(--accent-amber)')}
+                    onBlur={e => (e.target.style.borderBottomColor = 'transparent')}
+                  />
+                </div>
+
+                {/* Prompt disclosure */}
+                <button
+                  onClick={() => setPromptOpen(p => !p)}
+                  className="flex items-center gap-2 text-[10px] font-slate tracking-[0.1em] transition-colors duration-150 mt-2"
+                  style={{ color: 'var(--text-muted)' }}
+                  onMouseEnter={e => { e.currentTarget.style.color = 'var(--text-tertiary)' }}
+                  onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)' }}
                 >
-                  {/* Card header */}
+                  <ChevronDown
+                    className="w-3 h-3 transition-transform duration-200"
+                    style={{ transform: promptOpen ? 'rotate(180deg)' : 'rotate(-90deg)' }}
+                  />
+                  {promptOpen ? 'Hide' : 'View'} exact prompt being sent to ElevenLabs via Runway
+                </button>
+
+                {promptOpen && (
                   <div
-                    className="flex items-center justify-between px-6 py-4 border-b"
-                    style={{ borderColor: 'var(--border-subtle)' }}
+                    className="mt-3 px-4 py-3 rounded border fade-up"
+                    style={{ borderColor: 'var(--border-subtle)', background: 'var(--surface-1)' }}
                   >
-                    <div className="flex items-center gap-3">
-                      <Music className="w-4 h-4" style={{ color: 'var(--accent-amber)' }} />
-                      <span className="text-[10px] tracking-[0.25em] uppercase font-slate" style={{ color: 'var(--text-tertiary)' }}>
-                        Soundtrack Brief
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <Pencil className="w-3 h-3" style={{ color: 'var(--text-muted)' }} />
-                      <span className="text-[10px] font-slate" style={{ color: 'var(--text-muted)' }}>
-                        Extracted from your script — edit any field
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Fields */}
-                  <div className="px-6">
-                    <BriefField label="Genre" value={genre} onChange={setGenre} />
-                    <BriefField label="Tone" value={tone} onChange={setTone} />
-                    <BriefField label="Mood arc" value={mood} onChange={setMood} />
-                    <BriefField
-                      label="Narrative arc"
-                      value={narrativeArc}
-                      onChange={setNarrativeArc}
-                      multiline
-                    />
-                    <BriefField
-                      label="Visual style"
-                      value={visualStyle}
-                      onChange={setVisualStyle}
-                      multiline
-                    />
-                    <BriefField label="Duration" value="30 seconds" readOnly />
-                    <BriefField label="Vocals" value="None — music only" readOnly />
-                  </div>
-
-                  {/* Additional direction */}
-                  <div className="px-6 py-4 border-t" style={{ borderColor: 'var(--border-subtle)' }}>
-                    <p className="text-[10px] tracking-[0.2em] uppercase font-slate mb-3" style={{ color: 'var(--text-muted)' }}>
-                      Additional direction
-                    </p>
-                    <textarea
-                      value={additionalDirection}
-                      onChange={e => setAdditionalDirection(e.target.value)}
-                      placeholder="e.g. &quot;Music should feel like a Hans Zimmer score — sparse at the start, full orchestra at the climax&quot;"
-                      rows={3}
-                      className="w-full text-sm font-light leading-relaxed resize-none bg-transparent outline-none"
-                      style={{
-                        color: 'var(--text-secondary)',
-                        caretColor: 'var(--text-primary)',
-                        borderBottom: '1px solid transparent',
-                        transition: 'border-color 0.15s',
-                      }}
-                      onFocus={e => (e.target.style.borderBottomColor = 'var(--accent-amber)')}
-                      onBlur={e => (e.target.style.borderBottomColor = 'transparent')}
-                    />
-                    <p className="text-[10px] font-slate mt-2" style={{ color: 'var(--text-muted)' }}>
-                      Optional — add any specific direction beyond what was captured above
+                    <p className="text-xs font-light leading-relaxed font-slate" style={{ color: 'var(--text-tertiary)' }}>
+                      {buildPrompt({ tone, mood, narrativeArc, visualStyle, genre })}
+                      {additionalDirection && ` ${additionalDirection}`}
                     </p>
                   </div>
-                </div>
-
-                {/* Prompt preview — what will actually be sent */}
-                <div
-                  className="rounded border px-5 py-4 space-y-2"
-                  style={{ borderColor: 'var(--border-subtle)', background: 'var(--surface-1)' }}
-                >
-                  <p className="text-[10px] tracking-[0.2em] uppercase font-slate" style={{ color: 'var(--text-muted)' }}>
-                    Prompt being sent to ElevenLabs via Runway
-                  </p>
-                  <p className="text-xs font-light leading-relaxed font-slate" style={{ color: 'var(--text-tertiary)' }}>
-                    {buildPrompt({ tone, mood, narrativeArc, visualStyle, genre })}
-                    {additionalDirection && ` ${additionalDirection}`}
-                  </p>
-                </div>
+                )}
               </div>
 
-              {/* Right — action panel */}
-              <div>
+              {/* ── Right — sticky action panel ── */}
+              <div className="pt-16">
                 <div
                   className="rounded border p-6 space-y-5 sticky top-8"
                   style={{ borderColor: 'var(--border-standard)', background: 'var(--surface-1)' }}
                 >
-                  {/* Project */}
                   {script?.title && (
                     <div>
-                      <p className="text-[10px] tracking-[0.2em] uppercase font-slate mb-1" style={{ color: 'var(--text-muted)' }}>
+                      <p className="text-[10px] tracking-[0.2em] uppercase font-slate mb-1.5" style={{ color: 'var(--text-muted)' }}>
                         Project
                       </p>
-                      <p className="text-sm font-light" style={{ color: 'var(--text-secondary)' }}>
+                      <p className="text-sm font-light leading-snug" style={{ color: 'var(--text-secondary)' }}>
                         {script.title}
                       </p>
                     </div>
@@ -581,22 +592,9 @@ export default function SoundPage() {
 
                   <div className="h-px" style={{ background: 'var(--border-subtle)' }} />
 
-                  {/* What will happen */}
-                  <div className="space-y-3">
-                    {[
-                      'Generate 4 unique variations',
-                      'Scored to your narrative arc',
-                      'Music only — no vocals',
-                      '~30–45 seconds to complete',
-                    ].map((item, i) => (
-                      <div key={i} className="flex items-start gap-2.5">
-                        <ChevronRight className="w-3 h-3 flex-none mt-0.5" style={{ color: 'var(--accent-amber)' }} />
-                        <p className="text-xs font-light" style={{ color: 'var(--text-tertiary)' }}>{item}</p>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="h-px" style={{ background: 'var(--border-subtle)' }} />
+                  <p className="text-xs font-light leading-relaxed" style={{ color: 'var(--text-tertiary)' }}>
+                    4 variations · scored to your narrative arc · ~30–45s to generate
+                  </p>
 
                   <Button
                     variant="primary"
@@ -609,6 +607,7 @@ export default function SoundPage() {
                   </Button>
                 </div>
               </div>
+
             </div>
           </div>
         </div>
