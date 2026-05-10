@@ -62,13 +62,19 @@ function VideoPlayer({
   isGenerating,
   onGenerate,
   totalDuration,
+  clips,
 }: {
   hasVideo: boolean
   compiledUrl?: string
   isGenerating: boolean
   onGenerate: () => void
   totalDuration: number
+  clips?: VideoClip[]
 }) {
+  const [playingIndex, setPlayingIndex] = useState<number | null>(null)
+
+  const activeVideoUrl = compiledUrl || (playingIndex !== null && clips && clips[playingIndex]?.url)
+
   return (
     <div
       className="w-full rounded overflow-hidden border"
@@ -79,11 +85,21 @@ function VideoPlayer({
         className="relative w-full"
         style={{ aspectRatio: '16/9', background: 'var(--canvas)' }}
       >
-        {compiledUrl ? (
+        {activeVideoUrl ? (
           <video
-            src={compiledUrl}
+            src={activeVideoUrl}
             className="w-full h-full object-cover"
             controls
+            autoPlay
+            onEnded={() => {
+              if (!compiledUrl && playingIndex !== null && clips) {
+                if (playingIndex < clips.length - 1) {
+                  setPlayingIndex(playingIndex + 1)
+                } else {
+                  setPlayingIndex(null)
+                }
+              }
+            }}
           />
         ) : (
           <>
@@ -122,6 +138,26 @@ function VideoPlayer({
                   <p className="text-xs font-slate" style={{ color: 'var(--text-muted)' }}>
                     This may take a few minutes
                   </p>
+                </div>
+              ) : hasVideo ? (
+                <div className="flex flex-col items-center gap-5 text-center">
+                  <button
+                    onClick={() => {
+                      if (clips && clips.length > 0) setPlayingIndex(0)
+                    }}
+                    className="w-16 h-16 rounded-full border flex items-center justify-center cursor-pointer group"
+                    style={{ borderColor: 'var(--border-emphasis)', background: 'rgba(170,136,68,0.1)' }}
+                  >
+                    <Play className="w-7 h-7 ml-0.5 transition-transform group-hover:scale-110" style={{ color: 'var(--accent-amber)' }} />
+                  </button>
+                  <div className="space-y-1">
+                    <p className="text-sm font-light" style={{ color: 'var(--text-primary)' }}>
+                      Compiled video ready
+                    </p>
+                    <p className="text-xs font-slate" style={{ color: 'var(--text-muted)' }}>
+                      {totalDuration}s · {clips?.length || 0} clips
+                    </p>
+                  </div>
                 </div>
               ) : (
                 <div className="flex flex-col items-center gap-5 text-center">
@@ -788,6 +824,7 @@ export default function VideoPage() {
               isGenerating={isGenerating}
               onGenerate={handleGenerate}
               totalDuration={totalDuration}
+              clips={displayClips}
             />
           </div>
 
