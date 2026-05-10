@@ -1,12 +1,13 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useParams } from 'next/navigation'
 import { StoryboardResult, StoryboardShot } from '@/lib/types'
 
 type PageState = 'loading' | 'ready' | 'regenerating' | 'error'
 
-// Sort shot keys numerically: "1.1" < "1.2" < "2.1" etc.
+const MAX_W = 1080 // px — centered column width
+
 function sortShotKeys(keys: string[]): string[] {
   return keys.sort((a, b) => {
     const [aS, aF] = a.split('.').map(Number)
@@ -15,7 +16,6 @@ function sortShotKeys(keys: string[]): string[] {
   })
 }
 
-// Get the active image URL for a shot
 function getActiveImageUrl(shot: StoryboardShot): string | null {
   const gens = shot.image?.generations
   if (!gens || gens.length === 0) return null
@@ -24,13 +24,7 @@ function getActiveImageUrl(shot: StoryboardShot): string | null {
   return gen?.url ?? null
 }
 
-interface ShotCardProps {
-  shotKey: string
-  shot: StoryboardShot
-  index: number
-}
-
-function ShotCard({ shotKey, shot, index }: ShotCardProps) {
+function ShotCard({ shotKey, shot }: { shotKey: string; shot: StoryboardShot }) {
   const [imgLoaded, setImgLoaded] = useState(false)
   const url = getActiveImageUrl(shot)
   const sd = shot.script_data
@@ -40,18 +34,16 @@ function ShotCard({ shotKey, shot, index }: ShotCardProps) {
       className="rounded overflow-hidden border flex flex-col"
       style={{ borderColor: '#1a1a1a', background: '#0c0c0c' }}
     >
-      {/* Image area */}
+      {/* Image */}
       <div className="relative bg-[#111]" style={{ aspectRatio: '16/9' }}>
         {url ? (
           <>
-            {!imgLoaded && (
-              <div className="absolute inset-0 shimmer" />
-            )}
+            {!imgLoaded && <div className="absolute inset-0 shimmer" />}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={url}
               alt={`Shot ${shotKey}`}
-              className={`w-full h-full object-cover ${imgLoaded ? 'img-fade' : 'opacity-0'}`}
+              className={`w-full h-full object-cover transition-opacity duration-500 ${imgLoaded ? 'opacity-100' : 'opacity-0'}`}
               onLoad={() => setImgLoaded(true)}
               onError={() => setImgLoaded(true)}
             />
@@ -59,21 +51,13 @@ function ShotCard({ shotKey, shot, index }: ShotCardProps) {
         ) : (
           <div className="absolute inset-0 shimmer" />
         )}
-
-        {/* Shot number overlay */}
-        <div
-          className="absolute top-2 left-2 px-1.5 py-0.5 rounded text-[10px] font-mono"
-          style={{ background: 'rgba(0,0,0,0.7)', color: '#555' }}
-        >
+        <div className="absolute top-2 left-2 px-1.5 py-0.5 rounded text-[10px] font-mono"
+          style={{ background: 'rgba(0,0,0,0.7)', color: '#555' }}>
           {shotKey}
         </div>
-
-        {/* Duration overlay */}
         {sd?.duration && (
-          <div
-            className="absolute top-2 right-2 px-1.5 py-0.5 rounded text-[10px] font-mono"
-            style={{ background: 'rgba(0,0,0,0.7)', color: '#555' }}
-          >
+          <div className="absolute top-2 right-2 px-1.5 py-0.5 rounded text-[10px] font-mono"
+            style={{ background: 'rgba(0,0,0,0.7)', color: '#555' }}>
             {sd.duration}
           </div>
         )}
@@ -88,9 +72,7 @@ function ShotCard({ shotKey, shot, index }: ShotCardProps) {
         )}
         {sd?.description && (
           <p className="text-xs font-light leading-relaxed" style={{ color: '#888' }}>
-            {sd.description.length > 90
-              ? sd.description.slice(0, 90) + '...'
-              : sd.description}
+            {sd.description.length > 90 ? sd.description.slice(0, 90) + '...' : sd.description}
           </p>
         )}
         {sd?.dialogue && sd.dialogue.length > 0 && (
@@ -105,6 +87,9 @@ function ShotCard({ shotKey, shot, index }: ShotCardProps) {
 
 export default function StoryboardPage() {
   const router = useRouter()
+  const params = useParams()
+  const projectId = params?.id as string
+
   const [pageState, setPageState] = useState<PageState>('loading')
   const [storyboard, setStoryboard] = useState<StoryboardResult | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -121,7 +106,6 @@ export default function StoryboardPage() {
   }, [router])
 
   const handleRegenerate = useCallback(async () => {
-    // Re-run the pipeline using the stored script
     const storedScript = sessionStorage.getItem('directors-room-script')
     if (!storedScript) return
     setPageState('regenerating')
@@ -137,16 +121,17 @@ export default function StoryboardPage() {
         const err = await res.json()
         throw new Error(err.error || 'Regeneration failed')
       }
-      const { storyboard: next } = await res.json()
+      const { storyboard: next, projectId: nextId } = await res.json()
       sessionStorage.setItem('directors-room-storyboard', JSON.stringify(next))
       setStoryboard(next)
       setPageState('ready')
+      // Update URL to new project ID
+      router.replace(`/storyboard/${nextId}`)
     } catch (err) {
-      console.error('[storyboard] Regeneration failed:', err)
       setError(String(err))
       setPageState('error')
     }
-  }, [])
+  }, [router])
 
   if (pageState === 'loading' || !storyboard) return null
 
@@ -157,8 +142,11 @@ export default function StoryboardPage() {
 
       {/* ── Top bar ── */}
       <div className="flex-none w-full border-b" style={{ borderColor: '#1a1a1a' }}>
-        <div className="flex items-center justify-between py-4 px-8">
-          <div className="flex items-center gap-4">
+        <div
+          className="flex items-center justify-between py-4"
+          style={{ width: MAX_W, margin: '0 auto' }}
+        >
+          <div className="flex items-center gap-3">
             <p className="text-xs tracking-[0.25em] uppercase" style={{ color: '#444' }}>
               Director&apos;s Room
             </p>
@@ -167,8 +155,8 @@ export default function StoryboardPage() {
               Storyboard
             </p>
             <span style={{ color: '#222' }}>·</span>
-            <p className="text-xs" style={{ color: '#333' }}>
-              {shotKeys.length} shots
+            <p className="text-xs font-mono" style={{ color: '#333' }}>
+              {projectId}
             </p>
           </div>
 
@@ -195,42 +183,30 @@ export default function StoryboardPage() {
         <div className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-[#080808]">
           <div className="h-8 w-8 rounded-full border-t animate-spin"
             style={{ borderColor: '#1e1e1e', borderTopColor: '#666' }} />
-          <p className="text-sm font-light tracking-wide" style={{ color: '#888' }}>
-            Generating new storyboard...
-          </p>
+          <p className="text-sm font-light" style={{ color: '#888' }}>Generating new storyboard...</p>
           <p className="text-xs" style={{ color: '#333' }}>This takes 60–90 seconds</p>
         </div>
       )}
 
-      {/* ── Storyboard grid ── */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto px-8 py-8" style={{ maxWidth: 1100 }}>
-
-          {/* 3-column grid */}
+      {/* ── Grid ── */}
+      <div className="flex-1 overflow-y-auto w-full">
+        <div style={{ width: MAX_W, margin: '0 auto', paddingTop: 32, paddingBottom: 32 }}>
           <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
-            {shotKeys.map((key, i) => (
-              <ShotCard
-                key={key}
-                shotKey={key}
-                shot={storyboard.shots[key]}
-                index={i}
-              />
+            {shotKeys.map(key => (
+              <ShotCard key={key} shotKey={key} shot={storyboard.shots[key]} />
             ))}
           </div>
-
-          <div className="h-8" />
         </div>
       </div>
 
       {/* ── Bottom bar ── */}
       <div className="flex-none w-full border-t" style={{ borderColor: '#1a1a1a', background: '#0a0a0a' }}>
-        <div className="flex items-center justify-between px-8 py-4">
-          <p className="text-xs" style={{ color: '#2a2a2a' }}>
-            Video generation coming next.
-          </p>
-          <p className="text-xs" style={{ color: '#2a2a2a' }}>
-            Powered by Runway
-          </p>
+        <div
+          className="flex items-center justify-between py-4"
+          style={{ width: MAX_W, margin: '0 auto' }}
+        >
+          <p className="text-xs" style={{ color: '#2a2a2a' }}>Video generation coming next.</p>
+          <p className="text-xs" style={{ color: '#2a2a2a' }}>Powered by Runway</p>
         </div>
       </div>
     </main>

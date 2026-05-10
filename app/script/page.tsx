@@ -36,10 +36,10 @@ export default function ScriptPage() {
         const e = await res.json()
         throw new Error(e.error || 'Pipeline failed')
       }
-      const { storyboard } = await res.json()
+      const { storyboard, projectId } = await res.json()
       // Store storyboard and navigate
       sessionStorage.setItem('directors-room-storyboard', JSON.stringify(storyboard))
-      router.push('/storyboard')
+      router.push(`/storyboard/${projectId}`)
     } catch (err) {
       console.error('[script] Pipeline failed:', err)
       setError(String(err))
