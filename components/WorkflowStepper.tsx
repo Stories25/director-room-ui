@@ -48,13 +48,13 @@ export default function WorkflowStepper({ current, projectId }: WorkflowStepperP
             {/* Step node */}
             <button
               onClick={() => {
-                if (!isUpcoming && step.key !== current) {
+                if (step.key !== current) {
                   router.push(step.path(projectId))
                 }
               }}
-              disabled={isUpcoming}
+              disabled={false}
               className={`flex items-center gap-2 px-3 py-1.5 rounded transition-all duration-200 ${
-                isUpcoming ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
+                isUpcoming ? 'opacity-60 hover:opacity-100 cursor-pointer' : 'cursor-pointer'
               } ${isCurrent ? 'ring-1' : ''}`}
               style={{
                 background: isCurrent ? 'rgba(170,136,68,0.08)' : 'transparent',

@@ -78,11 +78,25 @@ export interface StoryboardShotData {
   camera_movement: string
 }
 
+export type VideoGenStatus = 'pending' | 'processing' | 'succeeded' | 'failed'
+
+export interface StoryboardShotVideoGeneration {
+  task_id: string
+  status: VideoGenStatus
+  url?: string
+  prompt?: string
+  created_at: number
+}
+
 export interface StoryboardShot {
   script_data: StoryboardShotData
   image: {
     active: number
     generations: StoryboardShotImage[]
+  }
+  video?: {
+    active: number
+    generations: StoryboardShotVideoGeneration[]
   }
 }
 
@@ -92,13 +106,13 @@ export interface StoryboardResult {
   activeGrid: number
 }
 
-// ─── Video types ────────────────────────────────────────────────────────────
+// ─── Legacy video types (kept for argon.ts compat) ──────────────────────────
 
 export type VideoClipStatus = 'pending' | 'generating' | 'ready' | 'error'
 
 export interface VideoClip {
   shotKey: string
-  duration: number // seconds
+  duration: number
   status: VideoClipStatus
   url?: string
   prompt: string
@@ -111,6 +125,34 @@ export interface VideoResult {
   totalDuration: number
   status: VideoClipStatus
   compiledUrl?: string
+}
+
+// ─── Video helpers ─────────────────────────────────────────────────────────
+
+export function isVideoAll(shots: Record<string, StoryboardShot>): boolean {
+  const keys = Object.keys(shots)
+  if (keys.length === 0) return false
+  return keys.every(key => {
+    const gens = shots[key].video?.generations
+    if (!gens || gens.length === 0) return false
+    const active = shots[key].video!.active
+    const gen = gens.find(g => g.task_id === String(active)) ?? gens[gens.length - 1]
+    return gen?.status === 'succeeded'
+  })
+}
+
+export function getPendingVideoTasks(shots: Record<string, StoryboardShot>): { shotKey: string; taskId: string }[] {
+  const tasks: { shotKey: string; taskId: string }[] = []
+  for (const [key, shot] of Object.entries(shots)) {
+    const gens = shot.video?.generations
+    if (!gens) continue
+    for (const gen of gens) {
+      if (gen.status === 'pending' || gen.status === 'processing') {
+        tasks.push({ shotKey: key, taskId: gen.task_id })
+      }
+    }
+  }
+  return tasks
 }
 
 // ─── Sound types ────────────────────────────────────────────────────────────

@@ -1,9 +1,11 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { Film, Play, ArrowRight, ArrowLeft, Loader2, AlertCircle, RefreshCw, Clock } from 'lucide-react'
-import type { VideoResult, VideoClip, StoryboardResult, StoryboardShot } from '@/lib/types'
+import type { VideoClip, StoryboardResult, StoryboardShot } from '@/lib/types'
+import { getPendingVideoTasks, isVideoAll } from '@/lib/types'
+import { generateShotVideo, checkVideoTask } from '@/lib/argon-browser'
 import { Sprocket, TopBar } from '@/components/shell/Shell'
 import WorkflowStepper from '@/components/WorkflowStepper'
 import Button from '@/components/ui/Button'
@@ -19,9 +21,10 @@ function getActiveImageUrl(shot: StoryboardShot): string | null {
 }
 
 const TOTAL_S = 30
+const POLL_INTERVAL_MS = 10_000
 
 function sortKeys(keys: string[]) {
-  return keys.sort((a, b) => {
+  return [...keys].sort((a, b) => {
     const [aS, aF] = a.split('.').map(Number)
     const [bS, bF] = b.split('.').map(Number)
     return aS !== bS ? aS - bS : aF - bF
@@ -32,13 +35,23 @@ function sortKeys(keys: string[]) {
 function deriveClips(storyboard: StoryboardResult): VideoClip[] {
   const keys = sortKeys(Object.keys(storyboard.shots))
   const base = Math.floor(TOTAL_S / Math.max(keys.length, 1))
-  return keys.map((key, i) => ({
-    shotKey: key,
-    duration: i === keys.length - 1 ? Math.max(3, TOTAL_S - base * (keys.length - 1)) : base,
-    status: 'pending' as const,
-    prompt: storyboard.shots[key]?.script_data?.description ?? '',
-    thumbnailUrl: getActiveImageUrl(storyboard.shots[key]) ?? undefined,
-  }))
+  return keys.map((key, i) => {
+    const shot = storyboard.shots[key]
+    // Use the video url if already succeeded
+    const videoGen = shot.video?.generations?.[shot.video.generations.length - 1]
+    return {
+      shotKey: key,
+      duration: i === keys.length - 1 ? Math.max(3, TOTAL_S - base * (keys.length - 1)) : base,
+      status: videoGen?.status === 'succeeded' ? 'ready' : videoGen ? 'generating' : 'pending',
+      prompt: shot?.script_data?.description ?? '',
+      thumbnailUrl: getActiveImageUrl(shot) ?? undefined,
+      url: videoGen?.status === 'succeeded' ? videoGen.url : undefined,
+    }
+  })
+}
+
+function sleep(ms: number) {
+  return new Promise<void>(resolve => setTimeout(resolve, ms))
 }
 
 // ─── Compiled video player ────────────────────────────────────────────────────
@@ -179,18 +192,24 @@ function ClipRow({
   shot,
   isFirst,
   onRegenerate,
+  onCheckStatus,
   isRegenerating,
+  isChecking,
 }: {
   clip: VideoClip
   index: number
   shot?: StoryboardShot
   isFirst: boolean
   onRegenerate: (shotKey: string) => void
+  onCheckStatus: (shotKey: string) => void
   isRegenerating: boolean
+  isChecking: boolean
 }) {
   const [hovered, setHovered] = useState(false)
+  const [playing, setPlaying] = useState(false)
   const thumbnail = clip.thumbnailUrl ?? (shot ? getActiveImageUrl(shot) : null)
-  const isPending = clip.status === 'pending'
+  const isPending = clip.status === 'pending' || clip.status === 'generating'
+  const hasTaskId = !!(shot?.video?.generations?.length)  // has a task to check
   const sd = shot?.script_data
 
   return (
@@ -218,6 +237,7 @@ function ClipRow({
         }}
       >
         {thumbnail ? (
+          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={thumbnail}
             alt={clip.shotKey}
@@ -233,43 +253,62 @@ function ClipRow({
           </div>
         )}
 
-        {/* Shimmer overlay when pending */}
+        {/* Shimmer overlay when pending/generating */}
         {isPending && (
           <div className="absolute inset-0 shimmer opacity-30" />
         )}
 
-        {/* Play button on hover (ready clips only) */}
-        {!isPending && hovered && (
-          <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.45)' }}>
+        {/* Play button — click to play (ready clips only) */}
+        {!isPending && clip.url && !playing && (
+          <button
+            className="absolute inset-0 flex items-center justify-center"
+            style={{ background: 'rgba(0,0,0,0.45)' }}
+            onClick={() => setPlaying(true)}
+          >
             <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(4px)' }}>
               <Play className="w-4 h-4 fill-white text-white ml-0.5" />
             </div>
-          </div>
+          </button>
+        )}
+
+        {/* Inline video player */}
+        {playing && clip.url && (
+          <video
+            className="absolute inset-0 w-full h-full object-cover"
+            src={clip.url}
+            autoPlay
+            controls
+            onEnded={() => setPlaying(false)}
+          />
         )}
 
         {/* Clip index + shot key */}
-        <div className="absolute top-2 left-2 flex items-center gap-1.5">
-          <span
-            className="text-[9px] font-slate px-1 py-0.5 rounded"
-            style={{ background: 'rgba(0,0,0,0.75)', color: 'var(--text-muted)' }}
-          >
-            {index + 1}
-          </span>
-          <span
-            className="text-[9px] font-slate px-1.5 py-0.5 rounded border"
-            style={{ background: 'rgba(0,0,0,0.75)', color: 'var(--accent-amber)', borderColor: 'rgba(170,136,68,0.3)' }}
-          >
-            {clip.shotKey}
-          </span>
-        </div>
+        {!playing && (
+          <div className="absolute top-2 left-2 flex items-center gap-1.5">
+            <span
+              className="text-[9px] font-slate px-1 py-0.5 rounded"
+              style={{ background: 'rgba(0,0,0,0.75)', color: 'var(--text-muted)' }}
+            >
+              {index + 1}
+            </span>
+            <span
+              className="text-[9px] font-slate px-1.5 py-0.5 rounded border"
+              style={{ background: 'rgba(0,0,0,0.75)', color: 'var(--accent-amber)', borderColor: 'rgba(170,136,68,0.3)' }}
+            >
+              {clip.shotKey}
+            </span>
+          </div>
+        )}
 
         {/* Duration badge */}
-        <div
-          className="absolute bottom-2 right-2 text-[9px] font-slate px-1.5 py-0.5 rounded"
-          style={{ background: 'rgba(0,0,0,0.75)', color: 'var(--text-secondary)' }}
-        >
-          {clip.duration}s
-        </div>
+        {!playing && (
+          <div
+            className="absolute bottom-2 right-2 text-[9px] font-slate px-1.5 py-0.5 rounded"
+            style={{ background: 'rgba(0,0,0,0.75)', color: 'var(--text-secondary)' }}
+          >
+            {clip.duration}s
+          </div>
+        )}
       </div>
 
       {/* ── Details ── */}
@@ -285,7 +324,7 @@ function ClipRow({
               border: `1px solid ${isPending ? 'var(--border-subtle)' : 'rgba(90,138,90,0.2)'}`,
             }}
           >
-            {isPending ? 'Pending' : 'Ready'}
+            {clip.status === 'generating' ? 'Rendering' : isPending ? 'Pending' : 'Ready'}
           </span>
 
           {/* Framing */}
@@ -349,22 +388,37 @@ function ClipRow({
           )}
         </div>
 
-        {/* Clip-level regenerate — appears on hover for ready clips */}
+        {/* Clip-level actions — appear on hover */}
         <div
-          className="flex justify-end mt-4 transition-opacity duration-150"
+          className="flex justify-end mt-4 transition-opacity duration-150 gap-2"
           style={{ opacity: hovered ? 1 : 0 }}
         >
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => onRegenerate(clip.shotKey)}
-            disabled={isRegenerating}
-          >
-            {isRegenerating
-              ? <><Loader2 className="w-3 h-3 animate-spin" /> Regenerating</>
-              : <><RefreshCw className="w-3 h-3" /> Regenerate clip</>
-            }
-          </Button>
+          {isPending && hasTaskId && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => onCheckStatus(clip.shotKey)}
+              disabled={isChecking}
+            >
+              {isChecking
+                ? <><Loader2 className="w-3 h-3 animate-spin" /> Checking…</>
+                : <><RefreshCw className="w-3 h-3" /> Check status</>
+              }
+            </Button>
+          )}
+          {!isPending && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => onRegenerate(clip.shotKey)}
+              disabled={isRegenerating}
+            >
+              {isRegenerating
+                ? <><Loader2 className="w-3 h-3 animate-spin" /> Regenerating</>
+                : <><RefreshCw className="w-3 h-3" /> Regenerate clip</>
+              }
+            </Button>
+          )}
         </div>
       </div>
     </div>
@@ -380,13 +434,6 @@ function readSessionStoryboard(): StoryboardResult | null {
   try { return JSON.parse(stored) } catch { return null }
 }
 
-function readSessionVideo(): VideoResult | null {
-  if (typeof window === 'undefined') return null
-  const stored = sessionStorage.getItem('directors-room-video')
-  if (!stored) return null
-  try { return JSON.parse(stored) } catch { return null }
-}
-
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function VideoPage() {
@@ -395,24 +442,96 @@ export default function VideoPage() {
   const projectId = params?.id as string
 
   const [storyboard, setStoryboard] = useState<StoryboardResult | null>(null)
-  const [video, setVideo] = useState<VideoResult | null>(null)
   const [pageState, setPageState] = useState<'loading' | 'ready' | 'generating' | 'error'>('loading')
   const [error, setError] = useState<string | null>(null)
   const [regeneratingClip, setRegeneratingClip] = useState<string | null>(null)
+  const [checkingClip, setCheckingClip] = useState<string | null>(null)
 
-  useEffect(() => {
-    const cachedStoryboard = readSessionStoryboard()
-    const cachedVideo = readSessionVideo()
+  const mountedRef = useRef(true)
 
-    if (cachedVideo && cachedVideo.projectId === projectId) {
-      setVideo(cachedVideo)
-      setStoryboard(cachedStoryboard)
-      setPageState('ready')
-      return
+  const persistStoryboard = useCallback((sb: StoryboardResult) => {
+    sessionStorage.setItem('directors-room-storyboard', JSON.stringify(sb))
+    setStoryboard(sb)
+  }, [])
+
+  // ── Sequential poll loop ─────────────────────────────────────────────────────
+  const runPollLoop = useCallback(async (sb: StoryboardResult): Promise<StoryboardResult> => {
+    let current = sb
+
+    while (mountedRef.current) {
+      const pending = getPendingVideoTasks(current.shots)
+      if (pending.length === 0) break
+
+      const updated = { ...current, shots: { ...current.shots } }
+
+      // Check each pending task sequentially
+      for (const { shotKey, taskId } of pending) {
+        if (!mountedRef.current) return current
+        try {
+          const gen = await checkVideoTask(projectId, shotKey, taskId)
+          updated.shots = {
+            ...updated.shots,
+            [shotKey]: {
+              ...updated.shots[shotKey],
+              video: {
+                active: updated.shots[shotKey].video?.active ?? 0,
+                generations: (updated.shots[shotKey].video?.generations ?? []).map(g =>
+                  g.task_id === taskId ? gen : g
+                ),
+              },
+            },
+          }
+        } catch (err) {
+          console.error(`[video] Poll failed for shot ${shotKey}:`, err)
+        }
+      }
+
+      if (!mountedRef.current) return current
+      persistStoryboard(updated)
+      current = updated
+
+      if (isVideoAll(current.shots)) {
+        // All done — do one final refetch to get authoritative URLs from backend
+        try {
+          const res = await fetch(`/api/projects/${projectId}`)
+          if (res.ok) {
+            const { project } = await res.json()
+            if (project?.storyboard?.shots) {
+              current = { projectId: project.id, shots: project.storyboard.shots, activeGrid: project.storyboard.active_grid }
+              persistStoryboard(current)
+            }
+          }
+        } catch { /* best-effort */ }
+        break
+      }
+
+      const stillPending = getPendingVideoTasks(current.shots)
+      if (stillPending.length === 0) break
+
+      await sleep(POLL_INTERVAL_MS)
     }
+
+    return current
+  }, [projectId, persistStoryboard])
+
+  // ── Boot ─────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    mountedRef.current = true
+
+    const cachedStoryboard = readSessionStoryboard()
+
     if (cachedStoryboard) {
       setStoryboard(cachedStoryboard)
-      setPageState('ready')
+      // Auto-resume polling if there were pending tasks
+      const pending = getPendingVideoTasks(cachedStoryboard.shots)
+      if (pending.length > 0) {
+        setPageState('generating')
+        runPollLoop(cachedStoryboard).then(() => {
+          if (mountedRef.current) setPageState('ready')
+        })
+      } else {
+        setPageState('ready')
+      }
       return
     }
 
@@ -421,72 +540,177 @@ export default function VideoPage() {
         const res = await fetch(`/api/projects/${projectId}`)
         if (!res.ok) throw new Error('Project not found')
         const { project } = await res.json()
+        if (!mountedRef.current) return
         if (!project?.storyboard?.shots || Object.keys(project.storyboard.shots).length === 0) {
           router.push('/')
           return
         }
-        setStoryboard({
+        const sb: StoryboardResult = {
           projectId: project.id,
           shots: project.storyboard.shots,
           activeGrid: project.storyboard.active_grid,
-        })
-        setPageState('ready')
+        }
+        setStoryboard(sb)
+        const pending = getPendingVideoTasks(sb.shots)
+        if (pending.length > 0) {
+          setPageState('generating')
+          runPollLoop(sb).then(() => {
+            if (mountedRef.current) setPageState('ready')
+          })
+        } else {
+          setPageState('ready')
+        }
       } catch {
-        router.push('/')
+        if (mountedRef.current) router.push('/')
       }
     }
     fetchFromAPI()
-  }, [projectId, router])
 
+    return () => { mountedRef.current = false }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // ── Generate all shots sequentially ─────────────────────────────────────────
   const handleGenerate = useCallback(async () => {
     if (!storyboard) return
     setError(null)
     setPageState('generating')
-    try {
-      const res = await fetch('/api/video/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId, shots: storyboard.shots }),
-      })
-      if (!res.ok) throw new Error('Video generation failed')
-      const { video: result } = await res.json()
-      sessionStorage.setItem('directors-room-video', JSON.stringify(result))
-      setVideo(result)
-      setPageState('ready')
-    } catch (err) {
-      setError(String(err))
-      setPageState('ready')
-    }
-  }, [projectId, storyboard])
 
+    const keys = sortKeys(Object.keys(storyboard.shots))
+    let current = { ...storyboard, shots: { ...storyboard.shots } }
+
+    // Phase 1 — kick off generation for each shot sequentially
+    for (const shotKey of keys) {
+      if (!mountedRef.current) return
+
+      // Skip shots that already have a succeeded generation
+      const gens = current.shots[shotKey].video?.generations ?? []
+      if (gens.some(g => g.status === 'succeeded')) continue
+
+      try {
+        const gen = await generateShotVideo(projectId, shotKey)
+        current = {
+          ...current,
+          shots: {
+            ...current.shots,
+            [shotKey]: {
+              ...current.shots[shotKey],
+              video: {
+                active: current.shots[shotKey].video?.active ?? 0,
+                generations: [...gens, gen],
+              },
+            },
+          },
+        }
+        persistStoryboard(current)
+      } catch (err) {
+        console.error(`[video] generateShotVideo failed for ${shotKey}:`, err)
+        if (mountedRef.current) {
+          setError(`Failed to start video for shot ${shotKey}: ${String(err)}`)
+          setPageState('error')
+        }
+        return
+      }
+    }
+
+    if (!mountedRef.current) return
+
+    // Phase 2 — poll all tasks sequentially until done
+    await runPollLoop(current)
+    if (mountedRef.current) setPageState('ready')
+  }, [storyboard, projectId, persistStoryboard, runPollLoop])
+
+  // ── Regenerate a single clip ──────────────────────────────────────────────
   const handleRegenerateClip = useCallback(async (shotKey: string) => {
-    if (!storyboard || !video) return
+    if (!storyboard || regeneratingClip) return
     setRegeneratingClip(shotKey)
-    try {
-      // Stub: regenerate just this one clip — send only its shot data
-      const singleShot = { [shotKey]: storyboard.shots[shotKey] }
-      const res = await fetch('/api/video/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId, shots: singleShot }),
-      })
-      if (!res.ok) throw new Error('Clip regeneration failed')
-      const { video: result } = await res.json()
-      // Merge the regenerated clip back into the existing video result
-      const updatedClips = video.clips.map(c =>
-        c.shotKey === shotKey ? (result.clips[0] ?? c) : c
-      )
-      const updated: VideoResult = { ...video, clips: updatedClips }
-      sessionStorage.setItem('directors-room-video', JSON.stringify(updated))
-      setVideo(updated)
-    } catch (err) {
-      setError(String(err))
-    } finally {
-      setRegeneratingClip(null)
-    }
-  }, [projectId, storyboard, video])
+    setError(null)
 
-  // ── Loading ──────────────────────────────────────────────────────────────────
+    try {
+      const gen = await generateShotVideo(projectId, shotKey)
+      const prevGens = storyboard.shots[shotKey].video?.generations ?? []
+      let current = {
+        ...storyboard,
+        shots: {
+          ...storyboard.shots,
+          [shotKey]: {
+            ...storyboard.shots[shotKey],
+            video: {
+              active: storyboard.shots[shotKey].video?.active ?? 0,
+              generations: [...prevGens, gen],
+            },
+          },
+        },
+      }
+      persistStoryboard(current)
+      current = await runPollLoop(current)
+    } catch (err) {
+      console.error(`[video] Regenerate clip failed for ${shotKey}:`, err)
+      if (mountedRef.current) setError(`Failed to regenerate shot ${shotKey}: ${String(err)}`)
+    } finally {
+      if (mountedRef.current) setRegeneratingClip(null)
+    }
+  }, [storyboard, projectId, persistStoryboard, runPollLoop, regeneratingClip])
+
+  // ── Refetch full project and update storyboard ───────────────────────────────
+  const refetchProject = useCallback(async () => {
+    const res = await fetch(`/api/projects/${projectId}`)
+    if (!res.ok) throw new Error('Failed to fetch project')
+    const { project } = await res.json()
+    if (!project?.storyboard?.shots) throw new Error('No storyboard in project')
+    const sb: StoryboardResult = {
+      projectId: project.id,
+      shots: project.storyboard.shots,
+      activeGrid: project.storyboard.active_grid,
+    }
+    persistStoryboard(sb)
+    return sb
+  }, [projectId, persistStoryboard])
+
+  // ── Check status of a single clip ───────────────────────────────────────────
+  const handleCheckStatus = useCallback(async (shotKey: string) => {
+    if (!storyboard || checkingClip) return
+    const shot = storyboard.shots[shotKey]
+    const gens = shot.video?.generations
+    if (!gens || gens.length === 0) {
+      console.warn(`[video] No generations found for shot ${shotKey}`)
+      return
+    }
+
+    const latest = gens[gens.length - 1]
+    setCheckingClip(shotKey)
+    try {
+      const gen = await checkVideoTask(projectId, shotKey, latest.task_id)
+
+      if (gen.status === 'succeeded') {
+        // Authoritative state lives on the backend — refetch full project
+        await refetchProject()
+      } else {
+        // Just update the local generation status
+        const updated = {
+          ...storyboard,
+          shots: {
+            ...storyboard.shots,
+            [shotKey]: {
+              ...shot,
+              video: {
+                active: shot.video?.active ?? 0,
+                generations: gens.map(g => g.task_id === latest.task_id ? gen : g),
+              },
+            },
+          },
+        }
+        persistStoryboard(updated)
+      }
+    } catch (err) {
+      console.error(`[video] Check status failed for ${shotKey}:`, err)
+      if (mountedRef.current) setError(`Failed to check status for shot ${shotKey}: ${String(err)}`)
+    } finally {
+      if (mountedRef.current) setCheckingClip(null)
+    }
+  }, [storyboard, projectId, persistStoryboard, checkingClip, refetchProject])
+
+  // ── Loading ──────────────────────────────────────────────────────────────
   if (pageState === 'loading') {
     return (
       <main className="flex h-screen w-screen flex-col overflow-hidden" style={{ background: 'var(--canvas)' }}>
@@ -502,19 +726,11 @@ export default function VideoPage() {
     )
   }
 
-  const hasVideo = !!(video && video.status === 'ready')
+  const hasVideo = storyboard ? isVideoAll(storyboard.shots) : false
   const isGenerating = pageState === 'generating'
 
-  // Build the clip list to display — either generated clips or derived from storyboard
-  const displayClips: VideoClip[] = hasVideo
-    ? video!.clips
-    : storyboard
-      ? deriveClips(storyboard)
-      : []
-
-  const totalDuration = hasVideo
-    ? video!.totalDuration
-    : displayClips.reduce((s, c) => s + c.duration, 0)
+  const displayClips: VideoClip[] = storyboard ? deriveClips(storyboard) : []
+  const totalDuration = displayClips.reduce((s, c) => s + c.duration, 0) || TOTAL_S
 
   // ── Ready ────────────────────────────────────────────────────────────────────
   return (
@@ -568,7 +784,7 @@ export default function VideoPage() {
           <div className="mb-10">
             <VideoPlayer
               hasVideo={hasVideo}
-              compiledUrl={video?.compiledUrl}
+              compiledUrl={undefined}
               isGenerating={isGenerating}
               onGenerate={handleGenerate}
               totalDuration={totalDuration}
@@ -599,7 +815,9 @@ export default function VideoPage() {
                     shot={storyboard?.shots[clip.shotKey]}
                     isFirst={i === 0}
                     onRegenerate={handleRegenerateClip}
+                    onCheckStatus={handleCheckStatus}
                     isRegenerating={regeneratingClip === clip.shotKey}
+                    isChecking={checkingClip === clip.shotKey}
                   />
                 ))}
               </div>

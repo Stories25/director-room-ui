@@ -3,7 +3,7 @@
  * Calls Argon directly from the browser — token is intentionally public for now.
  * CORS is open (*) on the Argon server so direct calls are viable.
  */
-import type { ScriptDocument, StoryboardResult, VideoResult, SoundResult, SoundTrack } from './types'
+import type { ScriptDocument, StoryboardResult, StoryboardShotVideoGeneration, SoundResult, SoundTrack } from './types'
 
 const BASE_URL   = process.env.NEXT_PUBLIC_ARGON_BASE_URL!
 const AUTH_TOKEN = process.env.NEXT_PUBLIC_ARGON_AUTH_TOKEN!
@@ -119,20 +119,58 @@ export async function generateStoryboard(projectId: string): Promise<StoryboardR
   }
 }
 
-// ─── Step 4: POST /api/video/generate (stub → will call Argon when ready) ─────
+// ─── Step 4a: POST /runway/projects/:id/shots/:shotKey/video ──────────────
 
-export async function generateVideo(projectId: string, shots: StoryboardResult['shots']): Promise<VideoResult> {
-  const res = await fetch('/api/video/generate', {
+function normalizeVideoStatus(raw: string | undefined): import('./types').VideoGenStatus {
+  switch ((raw ?? '').toLowerCase()) {
+    case 'succeeded': return 'succeeded'
+    case 'failed':    return 'failed'
+    case 'processing':
+    case 'running':   return 'processing'
+    default:          return 'pending'
+  }
+}
+
+export async function generateShotVideo(projectId: string, shotKey: string): Promise<StoryboardShotVideoGeneration> {
+  const res = await fetch(`${BASE_URL}/runway/projects/${projectId}/shots/${shotKey}/video`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ projectId, shots }),
+    headers: headers(),
   })
   if (!res.ok) {
     const err = await res.text()
-    throw new Error(`Failed to generate video (${res.status}): ${err}`)
+    throw new Error(`Failed to start video for shot ${shotKey} (${res.status}): ${err}`)
   }
   const data = await res.json()
-  return data.video
+  const gen = data?.data ?? data
+  if (!gen?.task_id) throw new Error(`No task_id in video gen response: ${JSON.stringify(data)}`)
+  return {
+    task_id: gen.task_id,
+    status: normalizeVideoStatus(gen.status),
+    url: gen.video_url ?? undefined,
+    prompt: gen.prompt ?? undefined,
+    created_at: gen.created_at ?? Date.now(),
+  }
+}
+
+export async function checkVideoTask(projectId: string, shotKey: string, taskId: string): Promise<StoryboardShotVideoGeneration> {
+  const res = await fetch(`${BASE_URL}/runway/projects/${projectId}/shots/${shotKey}/video-tasks/${taskId}`, {
+    method: 'GET',
+    headers: headers(),
+  })
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error(`Failed to check video task ${taskId} for shot ${shotKey} (${res.status}): ${err}`)
+  }
+  const data = await res.json()
+  const gen = data?.data ?? data
+  if (!gen?.task_id) throw new Error(`No task_id in video task response: ${JSON.stringify(data)}`)
+  return {
+    task_id: gen.task_id,
+    status: normalizeVideoStatus(gen.status),
+    url: gen.video_url ?? undefined,
+    prompt: gen.prompt ?? undefined,
+    created_at: gen.created_at ?? Date.now(),
+  }
 }
 
 // ─── Step 5: POST /api/sound/mix (stub → will call Argon when ready) ─────────

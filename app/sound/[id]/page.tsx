@@ -6,7 +6,7 @@ import {
   Music, Play, ArrowRight, ArrowLeft, Loader2, Check,
   Download, AlertCircle, ChevronDown,
 } from 'lucide-react'
-import type { SoundResult, SoundVariation, SoundTrackMood, ScriptDocument, VideoResult } from '@/lib/types'
+import type { SoundResult, SoundVariation, SoundTrackMood, ScriptDocument, StoryboardResult } from '@/lib/types'
 import { Sprocket, TopBar } from '@/components/shell/Shell'
 import WorkflowStepper from '@/components/WorkflowStepper'
 import Button from '@/components/ui/Button'
@@ -305,7 +305,7 @@ export default function SoundPage() {
 
   // Data
   const [script, setScript] = useState<ScriptDocument | null>(null)
-  const [video, setVideo] = useState<VideoResult | null>(null)
+  const [storyboard, setStoryboard] = useState<StoryboardResult | null>(null)
   const [sound, setSound] = useState<SoundResult | null>(null)
 
   // Brief state (editable)
@@ -329,10 +329,10 @@ export default function SoundPage() {
   // ── Boot ──────────────────────────────────────────────────────────────────
   useEffect(() => {
     const cachedScript = readSession<ScriptDocument>('directors-room-script')
-    const cachedVideo  = readSession<VideoResult>('directors-room-video')
+    const cachedStoryboard = readSession<StoryboardResult>('directors-room-storyboard')
     const cachedSound  = readSession<SoundResult>('directors-room-sound')
 
-    if (cachedVideo) setVideo(cachedVideo)
+    if (cachedStoryboard) setStoryboard(cachedStoryboard)
 
     // Restore cached sound state (but never skip brief population)
     if (cachedSound && cachedSound.projectId === projectId) {
@@ -697,17 +697,22 @@ export default function SoundPage() {
                   style={{ borderColor: 'var(--border-standard)', background: 'var(--canvas)' }}
                 >
                   <div className="relative" style={{ aspectRatio: '16/9', background: 'var(--surface-2)' }}>
-                    {video?.clips?.[0]?.thumbnailUrl ? (
-                      <img
-                        src={video.clips[0].thumbnailUrl}
-                        alt="Preview"
-                        className="w-full h-full object-cover opacity-50"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <Play className="w-8 h-8" style={{ color: 'var(--border-emphasis)' }} />
-                      </div>
-                    )}
+                    {(() => {
+                      const firstShotKey = storyboard ? Object.keys(storyboard.shots).sort()[0] : null
+                      const firstShot = firstShotKey ? storyboard!.shots[firstShotKey] : null
+                      const thumbUrl = firstShot?.image?.generations?.[firstShot.image.generations.length - 1]?.url
+                      return thumbUrl ? (
+                        <img
+                          src={thumbUrl}
+                          alt="Preview"
+                          className="w-full h-full object-cover opacity-50"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <Play className="w-8 h-8" style={{ color: 'var(--border-emphasis)' }} />
+                        </div>
+                      )
+                    })()}
                     <div className="absolute inset-0 flex items-center justify-center">
                       <div
                         className="w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200"
