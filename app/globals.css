@@ -105,3 +105,42 @@ body::after {
 .slide-up {
   animation: slide-up 0.2s ease-out forwards;
 }
+
+/* Storyboard skeleton shimmer */
+@keyframes shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position:  400px 0; }
+}
+
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    #111 0%,
+    #1e1e1e 40%,
+    #2a2a2a 50%,
+    #1e1e1e 60%,
+    #111 100%
+  );
+  background-size: 800px 100%;
+  animation: shimmer 1.8s infinite linear;
+}
+
+/* Cell reveal — cells appear one by one */
+@keyframes cell-reveal {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.cell-reveal {
+  animation: cell-reveal 0.4s ease-out forwards;
+}
+
+/* Storyboard image fade in */
+@keyframes img-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.img-fade {
+  animation: img-fade 0.6s ease-out forwards;
+}

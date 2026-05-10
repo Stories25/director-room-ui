@@ -52,3 +52,39 @@ export interface SessionCredentials {
   token: string
   roomName: string
 }
+
+// Storyboard types
+export interface StoryboardShotImage {
+  version: number
+  grid_no: number
+  url: string
+  created_at: number
+}
+
+export interface StoryboardShotData {
+  description: string
+  casting: string
+  location: string
+  framing: string
+  duration: string
+  dialogue: string[]
+  actions: string[]
+  mood: string
+  time_of_day: string
+  lighting: string
+  camera_movement: string
+}
+
+export interface StoryboardShot {
+  script_data: StoryboardShotData
+  image: {
+    active: number
+    generations: StoryboardShotImage[]
+  }
+}
+
+export interface StoryboardResult {
+  projectId: string
+  shots: Record<string, StoryboardShot>
+  activeGrid: number
+}
