@@ -1,12 +1,13 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { StoryboardResult, StoryboardShot } from '@/lib/types'
+import { Sprocket, TopBar } from '@/components/shell/Shell'
 
 type PageState = 'loading' | 'ready' | 'regenerating' | 'error'
 
-const MAX_W = 1080 // px — centered column width
+const MAX_W = 1080
 
 function sortShotKeys(keys: string[]): string[] {
   return keys.sort((a, b) => {
@@ -31,14 +32,31 @@ function ShotCard({ shotKey, shot }: { shotKey: string; shot: StoryboardShot }) 
 
   return (
     <div
-      className="rounded overflow-hidden border flex flex-col"
-      style={{ borderColor: '#1a1a1a', background: '#0c0c0c' }}
+      className="rounded overflow-hidden border flex flex-col transition-all duration-300"
+      style={{ borderColor: 'var(--border-standard)', background: 'var(--surface-1)' }}
+      onMouseEnter={e => {
+        e.currentTarget.style.borderColor = 'var(--border-emphasis)'
+        e.currentTarget.style.boxShadow = '0 4px 24px rgba(170,136,68,0.08)'
+        e.currentTarget.style.transform = 'translateY(-1px)'
+      }}
+      onMouseLeave={e => {
+        e.currentTarget.style.borderColor = 'var(--border-standard)'
+        e.currentTarget.style.boxShadow = 'none'
+        e.currentTarget.style.transform = 'translateY(0)'
+      }}
     >
-      {/* Image */}
-      <div className="relative bg-[#111]" style={{ aspectRatio: '16/9' }}>
+      {/* Image — with inner vignette for light-table well effect */}
+      <div className="relative" style={{ aspectRatio: '16/9', background: 'var(--surface-2)' }}>
+        {/* Inner vignette overlay */}
+        <div
+          className="absolute inset-0 z-10 pointer-events-none"
+          style={{
+            boxShadow: 'inset 0 0 40px rgba(0,0,0,0.4)',
+          }}
+        />
         {url ? (
           <>
-            {!imgLoaded && <div className="absolute inset-0 shimmer" />}
+            {!imgLoaded && <div className="absolute inset-0 shimmer z-0" />}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={url}
@@ -51,32 +69,34 @@ function ShotCard({ shotKey, shot }: { shotKey: string; shot: StoryboardShot }) 
         ) : (
           <div className="absolute inset-0 shimmer" />
         )}
-        <div className="absolute top-2 left-2 px-1.5 py-0.5 rounded text-[10px] font-mono"
-          style={{ background: 'rgba(0,0,0,0.7)', color: '#555' }}>
+        {/* Film frame number badge */}
+        <div className="absolute top-3 left-3 z-20 px-1.5 py-0.5 rounded text-[10px] font-slate"
+          style={{ background: 'rgba(0,0,0,0.75)', color: 'var(--text-tertiary)' }}>
           {shotKey}
         </div>
+        {/* Timecode badge */}
         {sd?.duration && (
-          <div className="absolute top-2 right-2 px-1.5 py-0.5 rounded text-[10px] font-mono"
-            style={{ background: 'rgba(0,0,0,0.7)', color: '#555' }}>
+          <div className="absolute top-3 right-3 z-20 px-1.5 py-0.5 rounded text-[10px] font-slate"
+            style={{ background: 'rgba(0,0,0,0.75)', color: 'var(--accent-amber)' }}>
             {sd.duration}
           </div>
         )}
       </div>
 
-      {/* Metadata */}
-      <div className="p-3 space-y-1.5 flex-1">
+      {/* Metadata — camera report style */}
+      <div className="p-4 space-y-2 flex-1">
         {sd?.framing && (
-          <p className="text-[10px] tracking-[0.15em] uppercase" style={{ color: '#3a3a3a' }}>
+          <p className="text-[10px] tracking-[0.15em] uppercase" style={{ color: 'var(--text-muted)' }}>
             {sd.framing}
           </p>
         )}
         {sd?.description && (
-          <p className="text-xs font-light leading-relaxed" style={{ color: '#888' }}>
+          <p className="text-sm font-light leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
             {sd.description.length > 90 ? sd.description.slice(0, 90) + '...' : sd.description}
           </p>
         )}
         {sd?.dialogue && sd.dialogue.length > 0 && (
-          <p className="text-xs italic" style={{ color: '#555' }}>
+          <p className="text-xs italic pl-3 border-l" style={{ color: 'var(--text-tertiary)', borderColor: 'var(--border-subtle)' }}>
             &ldquo;{sd.dialogue[0]}&rdquo;
           </p>
         )}
@@ -85,25 +105,59 @@ function ShotCard({ shotKey, shot }: { shotKey: string; shot: StoryboardShot }) 
   )
 }
 
+function readSessionStoryboard(): StoryboardResult | null {
+  if (typeof window === 'undefined') return null
+  const stored = sessionStorage.getItem('directors-room-storyboard')
+  if (!stored) return null
+  try { return JSON.parse(stored) } catch { return null }
+}
+
 export default function StoryboardPage() {
   const router = useRouter()
   const params = useParams()
   const projectId = params?.id as string
 
-  const [pageState, setPageState] = useState<PageState>('loading')
-  const [storyboard, setStoryboard] = useState<StoryboardResult | null>(null)
+  const sessionData = useMemo(() => readSessionStoryboard(), [])
+
+  const [pageState, setPageState] = useState<PageState>(() =>
+    sessionData ? 'ready' : 'loading'
+  )
+  const [storyboard, setStoryboard] = useState<StoryboardResult | null>(sessionData)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    const stored = sessionStorage.getItem('directors-room-storyboard')
-    if (!stored) { router.push('/'); return }
-    try {
-      setStoryboard(JSON.parse(stored))
-      setPageState('ready')
-    } catch {
-      router.push('/')
+    if (sessionData) return
+
+    let cancelled = false
+
+    async function fetchFromAPI() {
+      try {
+        const res = await fetch(`/api/projects/${projectId}`)
+        if (!res.ok) throw new Error('Project not found')
+        const { project } = await res.json()
+        if (!project?.storyboard?.shots) {
+          router.push('/')
+          return
+        }
+        if (cancelled) return
+        const sb: StoryboardResult = {
+          projectId: project.id,
+          shots: project.storyboard.shots,
+          activeGrid: project.storyboard.active_grid,
+        }
+        setStoryboard(sb)
+        setPageState('ready')
+      } catch (err) {
+        if (cancelled) return
+        console.error('[storyboard] API fetch failed:', err)
+        setError(String(err))
+        setPageState('error')
+      }
     }
-  }, [router])
+    fetchFromAPI()
+
+    return () => { cancelled = true }
+  }, [router, projectId, sessionData])
 
   const handleRegenerate = useCallback(async () => {
     const storedScript = sessionStorage.getItem('directors-room-script')
@@ -125,7 +179,6 @@ export default function StoryboardPage() {
       sessionStorage.setItem('directors-room-storyboard', JSON.stringify(next))
       setStoryboard(next)
       setPageState('ready')
-      // Update URL to new project ID
       router.replace(`/storyboard/${nextId}`)
     } catch (err) {
       setError(String(err))
@@ -138,60 +191,49 @@ export default function StoryboardPage() {
   const shotKeys = sortShotKeys(Object.keys(storyboard.shots))
 
   return (
-    <main className="flex h-screen w-screen flex-col overflow-hidden bg-[#080808]">
+    <main className="flex h-screen w-screen flex-col overflow-hidden" style={{ background: 'var(--canvas)' }}>
+      <Sprocket />
 
-      {/* ── Top bar ── */}
-      <div className="flex-none w-full border-b" style={{ borderColor: '#1a1a1a' }}>
-        <div
-          className="flex items-center justify-between py-4"
-          style={{ width: MAX_W, margin: '0 auto' }}
-        >
-          <div className="flex items-center gap-3">
-            <p className="text-xs tracking-[0.25em] uppercase" style={{ color: '#444' }}>
-              Director&apos;s Room
-            </p>
-            <span style={{ color: '#222' }}>·</span>
-            <p className="text-xs tracking-[0.15em] uppercase" style={{ color: '#555' }}>
-              Storyboard
-            </p>
-            <span style={{ color: '#222' }}>·</span>
-            <p className="text-xs font-mono" style={{ color: '#333' }}>
-              {projectId}
-            </p>
-          </div>
-
-          <div className="flex items-center gap-3">
-            {pageState === 'error' && (
-              <p className="text-xs" style={{ color: '#cc5555' }}>{error}</p>
-            )}
-            <button
-              onClick={handleRegenerate}
-              disabled={pageState === 'regenerating'}
-              className="px-5 py-2 text-xs tracking-widest uppercase border transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
-              style={{ borderColor: '#2a2a2a', color: '#666', borderRadius: 4 }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = '#555'; e.currentTarget.style.color = '#bbb' }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = '#2a2a2a'; e.currentTarget.style.color = '#666' }}
-            >
-              {pageState === 'regenerating' ? 'Regenerating...' : '↺ Regenerate'}
-            </button>
-          </div>
-        </div>
-      </div>
+      <TopBar
+        breadcrumb={[
+          { label: 'Projects', href: '/' },
+          { label: 'Storyboard', current: true },
+        ]}
+        rightAction={
+          <button
+            onClick={handleRegenerate}
+            disabled={pageState === 'regenerating'}
+            className="px-5 py-2 text-xs tracking-[0.2em] uppercase border transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{ borderColor: 'var(--border-standard)', color: 'var(--text-tertiary)', borderRadius: 2 }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-emphasis)'; e.currentTarget.style.color = 'var(--text-secondary)' }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-standard)'; e.currentTarget.style.color = 'var(--text-tertiary)' }}
+          >
+            {pageState === 'regenerating' ? 'Regenerating...' : '↺ Regenerate'}
+          </button>
+        }
+      />
 
       {/* ── Regenerating overlay ── */}
-      {pageState === 'regenerating' && (
-        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-[#080808]">
+      {(pageState === 'regenerating' || pageState === 'error') && (
+        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-4" style={{ background: 'var(--canvas)' }}>
           <div className="h-8 w-8 rounded-full border-t animate-spin"
-            style={{ borderColor: '#1e1e1e', borderTopColor: '#666' }} />
-          <p className="text-sm font-light" style={{ color: '#888' }}>Generating new storyboard...</p>
-          <p className="text-xs" style={{ color: '#333' }}>This takes 60–90 seconds</p>
+            style={{ borderColor: 'var(--surface-2)', borderTopColor: 'var(--text-secondary)' }} />
+          <p className="text-sm font-light" style={{ color: 'var(--text-secondary)' }}>
+            {pageState === 'error' ? 'Something went wrong' : 'Generating new storyboard...'}
+          </p>
+          {error && (
+            <p className="text-xs font-slate max-w-sm text-center" style={{ color: 'var(--accent-red)' }}>{error}</p>
+          )}
+          <p className="text-xs font-slate" style={{ color: 'var(--text-muted)' }}>
+            {pageState === 'error' ? '' : 'This takes 60–90 seconds'}
+          </p>
         </div>
       )}
 
-      {/* ── Grid ── */}
+      {/* ── Grid — light table ── */}
       <div className="flex-1 overflow-y-auto w-full">
         <div style={{ width: MAX_W, margin: '0 auto', paddingTop: 32, paddingBottom: 32 }}>
-          <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+          <div className="grid gap-6" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
             {shotKeys.map(key => (
               <ShotCard key={key} shotKey={key} shot={storyboard.shots[key]} />
             ))}
@@ -200,13 +242,29 @@ export default function StoryboardPage() {
       </div>
 
       {/* ── Bottom bar ── */}
-      <div className="flex-none w-full border-t" style={{ borderColor: '#1a1a1a', background: '#0a0a0a' }}>
-        <div
-          className="flex items-center justify-between py-4"
-          style={{ width: MAX_W, margin: '0 auto' }}
-        >
-          <p className="text-xs" style={{ color: '#2a2a2a' }}>Video generation coming next.</p>
-          <p className="text-xs" style={{ color: '#2a2a2a' }}>Powered by Runway</p>
+      <div className="flex-none w-full border-t" style={{ borderColor: 'var(--border-subtle)', background: 'var(--surface-1)' }}>
+        <div className="flex items-center justify-between py-4" style={{ width: MAX_W, margin: '0 auto' }}>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => router.push('/')}
+              className="text-xs tracking-[0.2em] uppercase border px-4 py-2 transition-all duration-200"
+              style={{ borderColor: 'var(--border-standard)', color: 'var(--text-tertiary)', borderRadius: 2 }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-emphasis)'; e.currentTarget.style.color = 'var(--text-secondary)' }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-standard)'; e.currentTarget.style.color = 'var(--text-tertiary)' }}
+            >
+              ← Projects
+            </button>
+            <button
+              onClick={() => router.push('/script')}
+              className="text-xs tracking-[0.2em] uppercase border px-4 py-2 transition-all duration-200"
+              style={{ borderColor: 'var(--border-standard)', color: 'var(--text-tertiary)', borderRadius: 2 }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-emphasis)'; e.currentTarget.style.color = 'var(--text-secondary)' }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-standard)'; e.currentTarget.style.color = 'var(--text-tertiary)' }}
+            >
+              View Script
+            </button>
+          </div>
+          <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>Powered by Runway</p>
         </div>
       </div>
     </main>

@@ -1,27 +1,35 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import ScriptDocumentView from '@/components/ScriptDocument'
 import { ScriptDocument } from '@/lib/types'
+import { Sprocket, TopBar } from '@/components/shell/Shell'
 
-// Dynamically import waiting screen (heavy animation component)
 const StoryboardWaiting = dynamic(() => import('@/components/StoryboardWaiting'), { ssr: false })
 
-type PageState = 'review' | 'building' | 'error'
+type PageState = 'loading' | 'review' | 'building' | 'error'
+
+function readSessionScript(): ScriptDocument | null {
+  if (typeof window === 'undefined') return null
+  const stored = sessionStorage.getItem('directors-room-script')
+  if (!stored) return null
+  try { return JSON.parse(stored) } catch { return null }
+}
 
 export default function ScriptPage() {
   const router = useRouter()
-  const [script, setScript] = useState<ScriptDocument | null>(null)
-  const [pageState, setPageState] = useState<PageState>('review')
+  const sessionData = useMemo(() => readSessionScript(), [])
+  const [script, setScript] = useState<ScriptDocument | null>(sessionData)
+  const [pageState, setPageState] = useState<PageState>(sessionData ? 'review' : 'loading')
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    const stored = sessionStorage.getItem('directors-room-script')
-    if (!stored) { router.push('/'); return }
-    try { setScript(JSON.parse(stored)) } catch { router.push('/') }
-  }, [router])
+    if (sessionData) return
+    // No session data — redirect to home
+    router.push('/')
+  }, [router, sessionData])
 
   const handleSend = async () => {
     if (!script) return
@@ -37,7 +45,6 @@ export default function ScriptPage() {
         throw new Error(e.error || 'Pipeline failed')
       }
       const { storyboard, projectId } = await res.json()
-      // Store storyboard and navigate
       sessionStorage.setItem('directors-room-storyboard', JSON.stringify(storyboard))
       router.push(`/storyboard/${projectId}`)
     } catch (err) {
@@ -47,7 +54,6 @@ export default function ScriptPage() {
     }
   }
 
-  // Show animated waiting screen while pipeline runs
   if (pageState === 'building' && script) {
     return <StoryboardWaiting script={script} />
   }
@@ -55,46 +61,30 @@ export default function ScriptPage() {
   if (!script) return null
 
   return (
-    <main className="flex h-screen w-screen flex-col overflow-hidden bg-[#080808]">
+    <main className="flex h-screen w-screen flex-col overflow-hidden" style={{ background: 'var(--canvas)' }}>
+      <Sprocket />
 
-      {/* ── Top bar ── */}
-      <div className="flex-none w-full border-b" style={{ borderColor: '#1a1a1a' }}>
-        <div className="flex items-center justify-between py-4 px-0" style={{ width: '720px', margin: '0 auto' }}>
-          <div className="flex items-center gap-4">
-            <p className="text-xs tracking-[0.25em] uppercase" style={{ color: '#444' }}>
-              Director&apos;s Room
-            </p>
-            <span style={{ color: '#222' }}>·</span>
-            <p className="text-xs tracking-[0.15em] uppercase" style={{ color: '#555' }}>
-              30 Second Teaser
-            </p>
-          </div>
-          <button
-            onClick={() => router.push('/room')}
-            className="text-xs tracking-widest uppercase px-4 py-2 border transition-all duration-200"
-            style={{ borderColor: '#2a2a2a', color: '#666', borderRadius: 4 }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = '#555'; e.currentTarget.style.color = '#ccc' }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor = '#2a2a2a'; e.currentTarget.style.color = '#666' }}
-          >
-            ← Back to Room
-          </button>
-        </div>
-      </div>
+      <TopBar
+        breadcrumb={[
+          { label: 'Projects', href: '/' },
+          { label: 'Script', current: true },
+        ]}
+      />
 
-      {/* ── Scrollable document ── */}
+      {/* Scrollable document */}
       <div className="flex-1 overflow-y-auto w-full">
-        <div style={{ width: '720px', margin: '0 auto', padding: '40px 0 120px 0' }}>
+        <div style={{ width: 720, margin: '0 auto', padding: '40px 0 120px 0' }}>
 
           {pageState === 'error' && (
             <div className="mb-8 rounded border px-4 py-3 space-y-2"
-              style={{ borderColor: '#3a1a1a', background: '#1a0a0a' }}>
-              <p className="text-xs" style={{ color: '#cc6666' }}>{error}</p>
+              style={{ borderColor: 'rgba(204,68,68,0.2)', background: 'rgba(204,68,68,0.05)' }}>
+              <p className="text-xs" style={{ color: 'var(--accent-red)' }}>{error}</p>
               <button
                 onClick={handleSend}
-                className="text-xs tracking-widest uppercase transition-colors"
-                style={{ color: '#666' }}
-                onMouseEnter={e => { e.currentTarget.style.color = '#aaa' }}
-                onMouseLeave={e => { e.currentTarget.style.color = '#666' }}
+                className="text-xs tracking-[0.2em] uppercase transition-colors"
+                style={{ color: 'var(--text-tertiary)' }}
+                onMouseEnter={e => { e.currentTarget.style.color = 'var(--text-secondary)' }}
+                onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-tertiary)' }}
               >
                 Retry →
               </button>
@@ -105,19 +95,19 @@ export default function ScriptPage() {
         </div>
       </div>
 
-      {/* ── Bottom action bar ── */}
-      <div className="flex-none w-full border-t" style={{ borderColor: '#1a1a1a', background: '#0a0a0a' }}>
-        <div className="flex items-center justify-between py-5" style={{ width: '720px', margin: '0 auto' }}>
-          <p className="text-xs" style={{ color: '#333' }}>
+      {/* Bottom action bar — clapperboard style */}
+      <div className="flex-none w-full border-t" style={{ borderColor: 'var(--border-subtle)', background: 'var(--surface-1)' }}>
+        <div className="flex items-center justify-between py-5" style={{ width: 720, margin: '0 auto' }}>
+          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
             All fields are editable before sending.
           </p>
           <button
             onClick={handleSend}
             disabled={pageState === 'building'}
-            className="px-8 py-3 text-sm font-medium tracking-widest uppercase transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
-            style={{ background: '#e8e8e8', color: '#080808', borderRadius: 4 }}
-            onMouseEnter={e => { e.currentTarget.style.background = '#ffffff' }}
-            onMouseLeave={e => { e.currentTarget.style.background = '#e8e8e8' }}
+            className="px-8 py-3 text-sm font-medium tracking-[0.2em] uppercase transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{ background: 'var(--text-primary)', color: 'var(--text-inverse)', borderRadius: 2 }}
+            onMouseEnter={e => { e.currentTarget.style.background = '#fff' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'var(--text-primary)' }}
           >
             Build Storyboard →
           </button>

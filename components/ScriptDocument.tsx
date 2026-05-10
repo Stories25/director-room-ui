@@ -7,47 +7,69 @@ interface ScriptDocumentProps {
   onChange: (updated: ScriptDocument) => void
 }
 
-// ── 30-second timeline ──────────────────────────────────────────────────────
+// ── Film strip timeline ──────────────────────────────────────────────────────
 
 function Timeline({ shots }: { shots: Shot[] }) {
   const total = shots.reduce((s, sh) => s + sh.duration_seconds, 0)
-  const arcColors = ['#2a3a2a', '#2a3530', '#1e2a35', '#2a2a3a', '#352a2a', '#3a2a2a', '#35302a']
+  // Film-stock colors for each shot "frame"
+  const frameColors = [
+    'rgba(90,138,90,0.25)', 'rgba(90,120,138,0.25)', 'rgba(138,90,90,0.25)',
+    'rgba(138,120,90,0.25)', 'rgba(90,90,138,0.25)', 'rgba(120,138,90,0.25)',
+    'rgba(138,90,120,0.25)',
+  ]
 
   return (
     <div className="space-y-3">
-      {/* Bar */}
-      <div className="flex h-8 rounded overflow-hidden gap-px" style={{ background: '#0d0d0d' }}>
-        {shots.map((shot, i) => {
-          const width = total > 0 ? (shot.duration_seconds / total) * 100 : 100 / shots.length
-          return (
-            <div
-              key={i}
-              className="relative flex items-center justify-center group cursor-default transition-opacity duration-150 hover:opacity-80"
-              style={{ width: `${width}%`, background: arcColors[i % arcColors.length] }}
-              title={`Shot ${shot.number}: ${shot.action?.slice(0, 60)}...`}
-            >
-              <span className="text-[9px] font-medium tabular-nums" style={{ color: '#666' }}>
-                {shot.duration_seconds}s
-              </span>
-            </div>
-          )
-        })}
+      {/* Film strip bar with sprocket edges */}
+      <div className="relative">
+        {/* Sprocket holes top */}
+        <div className="flex gap-2 mb-1 px-1">
+          {Array.from({ length: 12 }, (_, i) => (
+            <div key={i} className="rounded-full" style={{ width: 3, height: 3, background: 'var(--border-subtle)' }} />
+          ))}
+        </div>
+
+        {/* Bar */}
+        <div className="flex h-8 overflow-hidden gap-px rounded-sm" style={{ background: 'var(--surface-1)' }}>
+          {shots.map((shot, i) => {
+            const width = total > 0 ? (shot.duration_seconds / total) * 100 : 100 / shots.length
+            return (
+              <div
+                key={i}
+                className="relative flex items-center justify-center group cursor-default transition-opacity duration-150 hover:opacity-80"
+                style={{ width: `${width}%`, background: frameColors[i % frameColors.length] }}
+                title={`Shot ${shot.number}: ${shot.action?.slice(0, 60)}...`}
+              >
+                <span className="text-[9px] font-medium tabular-nums font-slate" style={{ color: 'var(--text-tertiary)' }}>
+                  {shot.duration_seconds}s
+                </span>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Sprocket holes bottom */}
+        <div className="flex gap-2 mt-1 px-1">
+          {Array.from({ length: 12 }, (_, i) => (
+            <div key={i} className="rounded-full" style={{ width: 3, height: 3, background: 'var(--border-subtle)' }} />
+          ))}
+        </div>
       </div>
 
       {/* Labels */}
       <div className="flex justify-between">
-        <span className="text-[10px]" style={{ color: '#333' }}>0s</span>
-        <span className="text-[10px]" style={{ color: total === 30 ? '#5a8a5a' : '#aa5533' }}>
+        <span className="text-[10px] font-slate" style={{ color: 'var(--text-muted)' }}>0s</span>
+        <span className="text-[10px] font-slate" style={{ color: total === 30 ? 'var(--accent-green)' : 'var(--accent-warm)' }}>
           {total}s {total !== 30 && `(target: 30s)`}
         </span>
       </div>
 
-      {/* Shot labels below bar */}
+      {/* Shot labels */}
       <div className="flex gap-4 flex-wrap">
         {shots.map((shot, i) => (
           <div key={i} className="flex items-center gap-1.5">
-            <div className="h-2 w-2 rounded-sm flex-none" style={{ background: arcColors[i % arcColors.length] }} />
-            <span className="text-[10px]" style={{ color: '#3a3a3a' }}>
+            <div className="h-2 w-2 rounded-sm flex-none" style={{ background: frameColors[i % frameColors.length] }} />
+            <span className="text-[10px] font-slate" style={{ color: 'var(--text-muted)' }}>
               {shot.number}. {shot.shot_type} · {shot.duration_seconds}s
             </span>
           </div>
@@ -77,7 +99,7 @@ function Editable({
   const base: React.CSSProperties = {
     background: 'transparent',
     outline: 'none',
-    caretColor: '#fff',
+    caretColor: 'var(--text-primary)',
     borderBottom: '1px solid transparent',
     transition: 'border-color 0.15s',
     width: '100%',
@@ -90,7 +112,7 @@ function Editable({
       rows={rows}
       className={`resize-none ${className}`}
       style={base}
-      onFocus={e => (e.target.style.borderBottomColor = '#333')}
+      onFocus={e => (e.target.style.borderBottomColor = 'var(--accent-amber)')}
       onBlur={e => (e.target.style.borderBottomColor = 'transparent')}
     />
   )
@@ -101,46 +123,44 @@ function Editable({
       onChange={e => onChange(e.target.value)}
       className={className}
       style={base}
-      onFocus={e => (e.target.style.borderBottomColor = '#333')}
+      onFocus={e => (e.target.style.borderBottomColor = 'var(--accent-amber)')}
       onBlur={e => (e.target.style.borderBottomColor = 'transparent')}
     />
   )
 }
 
-// ── Shot card ───────────────────────────────────────────────────────────────
+// ── Shot card — shooting script style ────────────────────────────────────────
 
 function ShotCard({
   shot,
-  index,
   onChange,
 }: {
   shot: Shot
-  index: number
   onChange: (updated: Shot) => void
 }) {
   const upd = (patch: Partial<Shot>) => onChange({ ...shot, ...patch })
 
   return (
     <div
-      className="rounded border p-5 space-y-3"
-      style={{ borderColor: '#1a1a1a', background: '#0c0c0c' }}
+      className="border-l-2 pl-5 py-4 space-y-3"
+      style={{ borderColor: 'var(--border-subtle)' }}
     >
-      {/* Slugline row */}
+      {/* Slugline */}
       <div className="flex items-center gap-3 flex-wrap">
-        {/* Shot number badge */}
+        {/* Shot number — large, like a film frame number */}
         <span
-          className="text-xs font-mono font-semibold px-2 py-0.5 rounded"
-          style={{ background: '#161616', color: '#555', border: '1px solid #222' }}
+          className="text-xs font-slate font-semibold px-2 py-0.5 rounded"
+          style={{ background: 'var(--surface-2)', color: 'var(--text-tertiary)', border: '1px solid var(--border-subtle)' }}
         >
           {shot.number}
         </span>
 
-        {/* INT/EXT toggle */}
+        {/* INT/EXT */}
         <select
           value={shot.location_type}
           onChange={e => upd({ location_type: e.target.value as LocationType })}
-          className="text-xs font-mono font-semibold uppercase bg-transparent outline-none cursor-pointer"
-          style={{ color: '#888', border: 'none' }}
+          className="text-xs font-slate font-semibold uppercase bg-transparent outline-none cursor-pointer"
+          style={{ color: 'var(--text-secondary)', border: 'none' }}
         >
           <option value="INT">INT.</option>
           <option value="EXT">EXT.</option>
@@ -150,25 +170,27 @@ function ShotCard({
         <Editable
           value={shot.location}
           onChange={v => upd({ location: v })}
-          className="text-xs font-mono font-semibold uppercase flex-1"
-          style={{ color: '#c0c0c0', minWidth: 120 }}
+          className="text-xs font-slate font-semibold uppercase flex-1"
+          style={{ color: 'var(--text-secondary)', minWidth: 120 }}
         />
 
+        {/* Time separator */}
+        <span className="text-xs font-slate" style={{ color: 'var(--text-muted)' }}>—</span>
+
         {/* Time of day */}
-        <span className="text-xs font-mono" style={{ color: '#555' }}>—</span>
         <Editable
           value={shot.time_of_day}
           onChange={v => upd({ time_of_day: v })}
-          className="text-xs font-mono uppercase"
-          style={{ color: '#888', width: 90 }}
+          className="text-xs font-slate uppercase"
+          style={{ color: 'var(--text-secondary)', width: 90 }}
         />
 
         {/* Shot type */}
         <select
           value={shot.shot_type}
           onChange={e => upd({ shot_type: e.target.value as ShotType })}
-          className="text-xs uppercase bg-transparent outline-none cursor-pointer ml-auto"
-          style={{ color: '#555', border: '1px solid #1a1a1a', borderRadius: 3, padding: '1px 6px' }}
+          className="text-xs uppercase bg-transparent outline-none cursor-pointer ml-auto font-slate"
+          style={{ color: 'var(--text-tertiary)', border: '1px solid var(--border-subtle)', borderRadius: 2, padding: '1px 6px' }}
         >
           {(['ECU','CU','MCU','MS','WS','EWS','POV','INSERT'] as ShotType[]).map(t => (
             <option key={t} value={t}>{t}</option>
@@ -183,41 +205,41 @@ function ShotCard({
             max={10}
             value={shot.duration_seconds}
             onChange={e => upd({ duration_seconds: Number(e.target.value) })}
-            className="text-xs tabular-nums text-right bg-transparent outline-none w-6"
-            style={{ color: '#666', border: 'none' }}
+            className="text-xs tabular-nums text-right bg-transparent outline-none w-6 font-slate"
+            style={{ color: 'var(--text-tertiary)', border: 'none' }}
           />
-          <span className="text-xs" style={{ color: '#333' }}>s</span>
+          <span className="text-xs font-slate" style={{ color: 'var(--text-muted)' }}>s</span>
         </div>
       </div>
 
-      {/* Action */}
+      {/* Action block */}
       <Editable
         value={shot.action}
         onChange={v => upd({ action: v })}
         multiline
         rows={2}
         className="text-sm font-light leading-relaxed"
-        style={{ color: '#c8c8c8' }}
+        style={{ color: 'var(--text-secondary)' }}
       />
 
-      {/* Dialogue */}
+      {/* Dialogue — indented block with left border */}
       {shot.dialogue !== undefined && (
-        <div className="pl-8 border-l" style={{ borderColor: '#1e1e1e' }}>
-          <p className="text-[10px] tracking-[0.2em] uppercase mb-1" style={{ color: '#333' }}>
+        <div className="pl-6 border-l" style={{ borderColor: 'var(--border-subtle)' }}>
+          <p className="text-[10px] tracking-[0.2em] uppercase mb-1" style={{ color: 'var(--text-muted)' }}>
             Dialogue
           </p>
           <Editable
             value={shot.dialogue}
             onChange={v => upd({ dialogue: v })}
             className="text-sm italic font-light"
-            style={{ color: '#888' }}
+            style={{ color: 'var(--text-secondary)' }}
           />
         </div>
       )}
 
-      {/* Direction */}
+      {/* Direction note */}
       {shot.direction !== undefined && (
-        <p className="text-xs italic" style={{ color: '#3a3a3a' }}>
+        <p className="text-xs italic" style={{ color: 'var(--text-muted)' }}>
           ({shot.direction})
         </p>
       )}
@@ -238,31 +260,29 @@ export default function ScriptDocumentView({ script, onChange }: ScriptDocumentP
   }
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-12">
 
-      {/* ── Header ── */}
-      <div className="space-y-5">
-        {/* Title — large, prominent */}
+      {/* ── Header — film title card style ── */}
+      <div className="space-y-6">
         <div>
-          <p className="text-[10px] tracking-[0.25em] uppercase mb-2" style={{ color: '#333' }}>Title</p>
+          <p className="text-[10px] tracking-[0.25em] uppercase mb-2" style={{ color: 'var(--text-muted)' }}>Title</p>
           <Editable
             value={script.title}
             onChange={v => update({ title: v })}
             className="text-2xl font-light tracking-tight"
-            style={{ color: '#f0f0f0', letterSpacing: '-0.01em' }}
+            style={{ color: 'var(--text-primary)', letterSpacing: '-0.01em' }}
           />
         </div>
 
-        {/* Logline */}
         <div>
-          <p className="text-[10px] tracking-[0.25em] uppercase mb-2" style={{ color: '#333' }}>Logline</p>
+          <p className="text-[10px] tracking-[0.25em] uppercase mb-2" style={{ color: 'var(--text-muted)' }}>Logline</p>
           <Editable
             value={script.logline}
             onChange={v => update({ logline: v })}
             multiline
             rows={2}
             className="text-sm font-light leading-relaxed"
-            style={{ color: '#888' }}
+            style={{ color: 'var(--text-secondary)' }}
           />
         </div>
 
@@ -273,28 +293,28 @@ export default function ScriptDocumentView({ script, onChange }: ScriptDocumentP
             { label: 'Tone',  value: script.tone,  key: 'tone'  as const },
           ].map(({ label, value, key }) => (
             <div key={key} className="flex items-center gap-2 rounded border px-3 py-1.5"
-              style={{ borderColor: '#1e1e1e', background: '#0d0d0d' }}>
-              <span className="text-[10px] tracking-[0.2em] uppercase" style={{ color: '#333' }}>{label}</span>
+              style={{ borderColor: 'var(--border-subtle)', background: 'var(--surface-1)' }}>
+              <span className="text-[10px] tracking-[0.2em] uppercase" style={{ color: 'var(--text-muted)' }}>{label}</span>
               <Editable
                 value={value}
                 onChange={v => update({ [key]: v })}
                 className="text-xs"
-                style={{ color: '#777', width: 100 }}
+                style={{ color: 'var(--text-tertiary)', width: 100 }}
               />
             </div>
           ))}
           <div className="flex items-center gap-2 rounded border px-3 py-1.5"
-            style={{ borderColor: '#1e1e1e', background: '#0d0d0d' }}>
-            <span className="text-[10px] tracking-[0.2em] uppercase" style={{ color: '#333' }}>Duration</span>
-            <span className="text-xs" style={{ color: '#555' }}>30 seconds</span>
+            style={{ borderColor: 'var(--border-subtle)', background: 'var(--surface-1)' }}>
+            <span className="text-[10px] tracking-[0.2em] uppercase" style={{ color: 'var(--text-muted)' }}>Duration</span>
+            <span className="text-xs font-slate" style={{ color: 'var(--text-muted)' }}>30 seconds</span>
           </div>
         </div>
       </div>
 
-      {/* ── 30-second timeline ── */}
+      {/* ── Film strip timeline ── */}
       {shots.length > 0 && (
         <div>
-          <p className="text-[10px] tracking-[0.25em] uppercase mb-4" style={{ color: '#333' }}>
+          <p className="text-[10px] tracking-[0.25em] uppercase mb-4" style={{ color: 'var(--text-muted)' }}>
             Timeline
           </p>
           <Timeline shots={shots} />
@@ -303,21 +323,20 @@ export default function ScriptDocumentView({ script, onChange }: ScriptDocumentP
 
       {/* ── Characters ── */}
       <div>
-        <div className="flex items-center gap-3 mb-5">
-          <p className="text-xs font-semibold tracking-[0.3em] uppercase" style={{ color: '#555' }}>Characters</p>
-          <div className="flex-1 h-px" style={{ background: '#1a1a1a' }} />
+        <div className="flex items-center gap-3 mb-6">
+          <p className="text-xs font-semibold tracking-[0.3em] uppercase" style={{ color: 'var(--text-tertiary)' }}>Characters</p>
+          <div className="flex-1 h-px" style={{ background: 'var(--border-subtle)' }} />
         </div>
         <div className="space-y-4">
           {script.characters.map((char, i) => (
             <div key={i} className="rounded border p-4 space-y-3"
-              style={{ borderColor: '#1a1a1a', background: '#0c0c0c' }}>
+              style={{ borderColor: 'var(--border-subtle)', background: 'var(--surface-1)' }}>
               <div className="flex items-center gap-4">
-                {/* Role badge */}
-                <span className="text-[10px] tracking-[0.2em] uppercase px-2 py-1 rounded"
+                <span className="text-[10px] tracking-[0.2em] uppercase px-2 py-1 rounded font-slate"
                   style={{
-                    background: char.role === 'protagonist' ? '#1a2a1a' : '#1a1a2a',
-                    color: char.role === 'protagonist' ? '#5a7a5a' : '#5a5a7a',
-                    border: `1px solid ${char.role === 'protagonist' ? '#2a3a2a' : '#2a2a3a'}`,
+                    background: char.role === 'protagonist' ? 'rgba(90,138,90,0.15)' : 'rgba(90,90,138,0.15)',
+                    color: char.role === 'protagonist' ? 'var(--accent-green)' : '#5a5a7a',
+                    border: `1px solid ${char.role === 'protagonist' ? 'rgba(90,138,90,0.3)' : 'rgba(90,90,138,0.3)'}`,
                   }}>
                   {char.role}
                 </span>
@@ -329,7 +348,7 @@ export default function ScriptDocumentView({ script, onChange }: ScriptDocumentP
                     update({ characters: chars })
                   }}
                   className="text-sm font-medium"
-                  style={{ color: '#e0e0e0', flex: 1 }}
+                  style={{ color: 'var(--text-primary)', flex: 1 }}
                 />
               </div>
               <Editable
@@ -342,32 +361,32 @@ export default function ScriptDocumentView({ script, onChange }: ScriptDocumentP
                 multiline
                 rows={2}
                 className="text-xs font-light leading-relaxed"
-                style={{ color: '#666' }}
+                style={{ color: 'var(--text-tertiary)' }}
               />
             </div>
           ))}
         </div>
       </div>
 
-      {/* ── Shot list ── */}
+      {/* ── Shot list — shooting script style ── */}
       <div>
-        <div className="flex items-center gap-3 mb-5">
-          <p className="text-xs font-semibold tracking-[0.3em] uppercase" style={{ color: '#555' }}>Shot List</p>
-          <div className="flex-1 h-px" style={{ background: '#1a1a1a' }} />
-          <p className="text-[10px]" style={{ color: '#2a2a2a' }}>{shots.length} shots</p>
+        <div className="flex items-center gap-3 mb-6">
+          <p className="text-xs font-semibold tracking-[0.3em] uppercase" style={{ color: 'var(--text-tertiary)' }}>Shot List</p>
+          <div className="flex-1 h-px" style={{ background: 'var(--border-subtle)' }} />
+          <p className="text-[10px] font-slate" style={{ color: 'var(--text-muted)' }}>{shots.length} shots</p>
         </div>
-        <div className="space-y-3">
+        <div className="space-y-0">
           {shots.map((shot, i) => (
-            <ShotCard key={i} shot={shot} index={i} onChange={updated => updateShot(i, updated)} />
+            <ShotCard key={i} shot={shot} onChange={updated => updateShot(i, updated)} />
           ))}
         </div>
       </div>
 
       {/* ── Direction ── */}
       <div>
-        <div className="flex items-center gap-3 mb-5">
-          <p className="text-xs font-semibold tracking-[0.3em] uppercase" style={{ color: '#555' }}>Direction</p>
-          <div className="flex-1 h-px" style={{ background: '#1a1a1a' }} />
+        <div className="flex items-center gap-3 mb-6">
+          <p className="text-xs font-semibold tracking-[0.3em] uppercase" style={{ color: 'var(--text-tertiary)' }}>Direction</p>
+          <div className="flex-1 h-px" style={{ background: 'var(--border-subtle)' }} />
         </div>
         <div className="space-y-5">
           {[
@@ -375,14 +394,14 @@ export default function ScriptDocumentView({ script, onChange }: ScriptDocumentP
             { label: 'Narrative Arc', value: script.narrative_arc, key: 'narrative_arc' as const },
           ].map(({ label, value, key }) => (
             <div key={key}>
-              <p className="text-[10px] tracking-[0.25em] uppercase mb-2" style={{ color: '#333' }}>{label}</p>
+              <p className="text-[10px] tracking-[0.25em] uppercase mb-2" style={{ color: 'var(--text-muted)' }}>{label}</p>
               <Editable
                 value={value}
                 onChange={v => update({ [key]: v })}
                 multiline
                 rows={3}
                 className="text-sm font-light leading-relaxed"
-                style={{ color: '#888' }}
+                style={{ color: 'var(--text-secondary)' }}
               />
             </div>
           ))}

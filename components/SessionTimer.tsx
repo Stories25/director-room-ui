@@ -3,10 +3,10 @@
 import { useEffect, useState } from 'react'
 
 interface SessionTimerProps {
-  startedAt: number // timestamp ms
+  startedAt: number
   maxSeconds?: number
-  onWarning?: () => void   // called at 60s remaining
-  onCritical?: () => void  // called at 30s remaining
+  onWarning?: () => void
+  onCritical?: () => void
 }
 
 export default function SessionTimer({
@@ -49,14 +49,14 @@ export default function SessionTimer({
       <div
         className="h-1.5 w-1.5 rounded-full"
         style={{
-          background: isCritical ? '#cc4444' : isWarning ? '#aa7733' : '#333',
+          background: isCritical ? 'var(--accent-red)' : isWarning ? 'var(--accent-warm)' : 'var(--text-muted)',
           transition: 'background 0.5s',
         }}
       />
       <p
-        className={`text-xs tabular-nums ${isCritical ? 'timer-flash' : ''}`}
+        className={`text-xs tabular-nums font-slate ${isCritical ? 'timer-flash' : ''}`}
         style={{
-          color: isCritical ? '#cc4444' : isWarning ? '#aa7733' : '#3a3a3a',
+          color: isCritical ? 'var(--accent-red)' : isWarning ? 'var(--accent-warm)' : 'var(--text-muted)',
           transition: 'color 0.5s',
           fontVariantNumeric: 'tabular-nums',
         }}

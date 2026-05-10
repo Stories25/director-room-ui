@@ -1,7 +1,5 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
-
 export interface StoryExtraction {
   character: string | null
   setting: string | null
@@ -31,27 +29,27 @@ export default function StoryPanel({ extraction, isExtracting }: StoryPanelProps
     <div className="flex h-full flex-col">
       {/* Header */}
       <div className="flex-none border-b px-6 py-4 flex items-center justify-between"
-        style={{ borderColor: '#1a1a1a' }}>
-        <p className="text-xs tracking-[0.2em] uppercase" style={{ color: '#555' }}>
+        style={{ borderColor: 'var(--border-subtle)' }}>
+        <p className="text-xs tracking-[0.2em] uppercase" style={{ color: 'var(--text-tertiary)' }}>
           Story So Far
         </p>
         <div className="flex items-center gap-2">
           {isExtracting && (
-            <div className="h-1.5 w-1.5 rounded-full animate-pulse" style={{ background: '#555' }} />
+            <div className="h-1.5 w-1.5 rounded-full animate-pulse" style={{ background: 'var(--text-tertiary)' }} />
           )}
-          <p className="text-xs tabular-nums" style={{ color: captured === total ? '#6a9a6a' : '#444' }}>
+          <p className="text-xs tabular-nums font-slate" style={{ color: captured === total ? 'var(--accent-green)' : 'var(--text-tertiary)' }}>
             {captured}/{total}
           </p>
         </div>
       </div>
 
       {/* Progress bar */}
-      <div className="flex-none h-px w-full" style={{ background: '#111' }}>
+      <div className="flex-none h-px w-full" style={{ background: 'var(--surface-2)' }}>
         <div
           className="h-full transition-all duration-700"
           style={{
             width: `${(captured / total) * 100}%`,
-            background: captured === total ? '#4a7a4a' : '#333',
+            background: captured === total ? 'var(--accent-green)' : 'var(--text-muted)',
           }}
         />
       </div>
@@ -64,26 +62,24 @@ export default function StoryPanel({ extraction, isExtracting }: StoryPanelProps
 
           return (
             <div key={field.key} className="space-y-1.5">
-              {/* Label row */}
               <div className="flex items-center gap-2">
                 <div
                   className="h-1.5 w-1.5 rounded-full flex-none transition-colors duration-500"
-                  style={{ background: hasValue ? '#5a8a5a' : '#2a2a2a' }}
+                  style={{ background: hasValue ? 'var(--accent-green)' : 'var(--text-muted)' }}
                 />
                 <p className="text-[10px] font-medium tracking-[0.25em] uppercase"
-                  style={{ color: hasValue ? '#666' : '#333' }}>
+                  style={{ color: hasValue ? 'var(--text-tertiary)' : 'var(--text-muted)' }}>
                   {field.label}
                 </p>
               </div>
 
-              {/* Value or hint */}
               {hasValue ? (
                 <p className="text-sm font-light leading-relaxed pl-3.5 fade-up"
-                  style={{ color: '#c8c8c8' }}>
+                  style={{ color: 'var(--text-secondary)' }}>
                   {value}
                 </p>
               ) : (
-                <p className="text-xs italic pl-3.5" style={{ color: '#2a2a2a' }}>
+                <p className="text-xs italic pl-3.5" style={{ color: 'var(--text-muted)' }}>
                   {field.hint}
                 </p>
               )}
@@ -92,10 +88,10 @@ export default function StoryPanel({ extraction, isExtracting }: StoryPanelProps
         })}
       </div>
 
-      {/* Footer — when complete */}
+      {/* Footer */}
       {captured === total && (
-        <div className="flex-none border-t px-6 py-4 fade-up" style={{ borderColor: '#1a1a1a' }}>
-          <p className="text-xs text-center" style={{ color: '#5a8a5a' }}>
+        <div className="flex-none border-t px-6 py-4 fade-up" style={{ borderColor: 'var(--border-subtle)' }}>
+          <p className="text-xs text-center" style={{ color: 'var(--accent-green)' }}>
             Story captured — ready to finish
           </p>
         </div>

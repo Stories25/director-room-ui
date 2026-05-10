@@ -1,13 +1,32 @@
 @import "tailwindcss";
 
 :root {
-  --bg: #080808;
-  --surface: #111111;
-  --border: #1f1f1f;
-  --text-primary: #f0f0f0;
-  --text-muted: #6b6b6b;
-  --text-dim: #3a3a3a;
-  --accent: #e4e4e7;
+  /* ── Surfaces (dark mode — higher = lighter) ── */
+  --canvas:      #080808;
+  --surface-1:   #0c0c0c;
+  --surface-2:   #111111;
+  --surface-3:   #161616;
+
+  /* ── Text hierarchy ── */
+  --text-primary:   #e8e8e8;
+  --text-secondary: #888888;
+  --text-tertiary:  #555555;
+  --text-muted:     #333333;
+  --text-inverse:   #080808;
+
+  /* ── Borders (progression by importance) ── */
+  --border-subtle:   rgba(255,255,255,0.035);
+  --border-standard: rgba(255,255,255,0.06);
+  --border-emphasis: rgba(255,255,255,0.10);
+
+  /* ── Accents (film-world colors) ── */
+  --accent-amber:  #aa8844;
+  --accent-green:  #5a8a5a;
+  --accent-red:    #cc4444;
+  --accent-warm:   #8a6a3a;
+
+  /* ── Functional ── */
+  --focus-ring: rgba(170,136,68,0.35);
 }
 
 * {
@@ -18,7 +37,7 @@
 
 html,
 body {
-  background: var(--bg);
+  background: var(--canvas);
   color: var(--text-primary);
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   height: 100%;
@@ -38,7 +57,7 @@ body::after {
   background-size: 128px 128px;
 }
 
-/* Scrollbar */
+/* ── Scrollbar ── */
 ::-webkit-scrollbar {
   width: 4px;
 }
@@ -46,72 +65,61 @@ body::after {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--border);
+  background: var(--border-standard);
   border-radius: 2px;
 }
 
-/* Pulsing mic animation */
+/* ── Animations ── */
+
 @keyframes mic-pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.4; transform: scale(0.85); }
 }
-
 .mic-pulse {
   animation: mic-pulse 1.5s ease-in-out infinite;
 }
 
-/* Slow breathing glow for building screen */
 @keyframes breathe {
   0%, 100% { opacity: 0.4; }
   50% { opacity: 1; }
 }
-
 .breathe {
   animation: breathe 3s ease-in-out infinite;
 }
 
-/* Transcript fade-in */
 @keyframes fade-up {
   from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
+  to   { opacity: 1; transform: translateY(0); }
 }
-
 .fade-up {
   animation: fade-up 0.3s ease-out forwards;
 }
 
-/* Waveform bar animation */
 @keyframes wave {
   from { height: 15%; }
   to   { height: 85%; }
 }
 
-/* Session timer flash when critical */
 @keyframes timer-flash {
   0%, 100% { opacity: 1; }
   50%       { opacity: 0.4; }
 }
-
 .timer-flash {
   animation: timer-flash 0.8s ease-in-out infinite;
 }
 
-/* Smooth slide-in for modal */
 @keyframes slide-up {
   from { opacity: 0; transform: translateY(12px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-
 .slide-up {
   animation: slide-up 0.2s ease-out forwards;
 }
 
-/* Storyboard skeleton shimmer */
 @keyframes shimmer {
   0%   { background-position: -400px 0; }
   100% { background-position:  400px 0; }
 }
-
 .shimmer {
   background: linear-gradient(
     90deg,
@@ -125,22 +133,36 @@ body::after {
   animation: shimmer 1.8s infinite linear;
 }
 
-/* Cell reveal — cells appear one by one */
 @keyframes cell-reveal {
   from { opacity: 0; transform: scale(0.96); }
   to   { opacity: 1; transform: scale(1); }
 }
-
 .cell-reveal {
   animation: cell-reveal 0.4s ease-out forwards;
 }
 
-/* Storyboard image fade in */
 @keyframes img-fade {
   from { opacity: 0; }
   to   { opacity: 1; }
 }
-
 .img-fade {
   animation: img-fade 0.6s ease-out forwards;
+}
+
+/* Diagonal wipe for modal overlay */
+@keyframes diagonal-wipe {
+  from { clip-path: polygon(0 0, 0 0, 0 100%, 0 100%); }
+  to   { clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%); }
+}
+
+/* ── Typography utilities ── */
+.font-slate {
+  font-family: 'SF Mono', 'Fira Code', 'Menlo', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Selection ── */
+::selection {
+  background: rgba(170,136,68,0.25);
+  color: var(--text-primary);
 }

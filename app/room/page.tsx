@@ -9,6 +9,7 @@ import WaveformIndicator from '@/components/WaveformIndicator'
 import SessionTimer from '@/components/SessionTimer'
 import ConfirmEndModal from '@/components/ConfirmEndModal'
 import { SessionCredentials, TranscriptEntry } from '@/lib/types'
+import { Sprocket } from '@/components/shell/Shell'
 
 const AvatarView = dynamic(() => import('@/components/AvatarView'), { ssr: false })
 
@@ -17,7 +18,6 @@ type RightTab = 'transcript' | 'story'
 
 const AVATAR_ID = process.env.NEXT_PUBLIC_AVATAR_ID!
 
-// P1: Explicit step-by-step loading messages
 const LOADING_STEPS = [
   { label: 'Creating session',       minElapsed: 0  },
   { label: 'Provisioning avatar',    minElapsed: 8  },
@@ -40,7 +40,6 @@ export default function RoomPage() {
   const [sessionStartedAt, setSessionStartedAt] = useState<number>(0)
   const [timeWarning, setTimeWarning] = useState<'none' | 'warning' | 'critical'>('none')
 
-  // P0: Live story extraction state
   const [extraction, setExtraction] = useState<StoryExtraction>({
     character: null, setting: null, tone: null, action: null, arc: null,
   })
@@ -48,7 +47,6 @@ export default function RoomPage() {
   const extractionDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastHankEntryCount = useRef(0)
 
-  // P1: Loading progress
   useEffect(() => {
     if (pageState !== 'loading') return
     const t = setInterval(() => setElapsed(s => s + 1), 1000)
@@ -58,7 +56,6 @@ export default function RoomPage() {
   const currentStep = LOADING_STEPS.filter(s => s.minElapsed <= elapsed).pop()
   const loadingProgress = Math.min((elapsed / 90) * 100, 95)
 
-  // Session creation
   useEffect(() => {
     async function createSession() {
       try {
@@ -84,7 +81,6 @@ export default function RoomPage() {
     createSession()
   }, [])
 
-  // P0: Run story extraction after every new HANK entry (debounced 1.5s)
   useEffect(() => {
     const hankEntries = transcript.filter(e => e.speaker === 'HANK')
     if (hankEntries.length === lastHankEntryCount.current) return
@@ -103,7 +99,6 @@ export default function RoomPage() {
         if (res.ok) {
           const { extraction: ext } = await res.json()
           setExtraction(ext)
-          // Auto-switch to story tab when first extraction arrives
           if (Object.values(ext).some(v => v !== null)) {
             setRightTab('story')
           }
@@ -116,7 +111,6 @@ export default function RoomPage() {
 
   const handleTranscriptUpdate = useCallback((entry: TranscriptEntry) => {
     setTranscript(prev => [...prev, entry])
-    // Detect when director is speaking vs not (simple heuristic)
     if (entry.speaker === 'YOU') setIsSpeaking(false)
   }, [])
 
@@ -125,8 +119,6 @@ export default function RoomPage() {
     setMicMuted(muted)
   }, [])
 
-  // P1: Detect speaking state via mic activity
-  // The AvatarView will dispatch a custom event when user speech starts/stops
   useEffect(() => {
     const onSpeechStart = () => setIsSpeaking(true)
     const onSpeechEnd   = () => setIsSpeaking(false)
@@ -138,7 +130,6 @@ export default function RoomPage() {
     }
   }, [])
 
-  // P0: Show confirmation modal before ending
   const handleFinishClick = useCallback(() => {
     setPageState('confirming')
   }, [])
@@ -177,12 +168,12 @@ export default function RoomPage() {
   }, [transcript, router])
 
   return (
-    <main className="flex h-screen w-screen overflow-hidden bg-[#080808]">
+    <main className="flex h-screen w-screen overflow-hidden" style={{ background: 'var(--canvas)' }}>
+      <Sprocket />
 
-      {/* ── P1: Improved loading state ── */}
+      {/* ── Loading state ── */}
       {pageState === 'loading' && (
-        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-10 bg-[#080808]">
-          {/* Steps */}
+        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-10" style={{ background: 'var(--canvas)' }}>
           <div className="space-y-3 w-64">
             {LOADING_STEPS.map((step, i) => {
               const done = step.minElapsed < elapsed
@@ -191,52 +182,48 @@ export default function RoomPage() {
                 <div key={i} className="flex items-center gap-3">
                   <div
                     className="h-1.5 w-1.5 rounded-full flex-none transition-all duration-500"
-                    style={{ background: done ? '#5a8a5a' : active ? '#888' : '#222' }}
+                    style={{ background: done ? 'var(--accent-green)' : active ? 'var(--text-tertiary)' : 'var(--text-muted)' }}
                   />
                   <p
-                    className="text-xs transition-colors duration-500"
-                    style={{ color: done ? '#555' : active ? '#aaa' : '#2a2a2a' }}
+                    className="text-xs transition-colors duration-500 font-slate"
+                    style={{ color: done ? 'var(--text-tertiary)' : active ? 'var(--text-secondary)' : 'var(--text-muted)' }}
                   >
                     {step.label}
-                    {done && <span style={{ color: '#4a7a4a' }}> ✓</span>}
+                    {done && <span style={{ color: 'var(--accent-green)' }}> ✓</span>}
                   </p>
                 </div>
               )
             })}
           </div>
 
-          {/* Progress bar */}
-          <div className="w-64 h-px overflow-hidden" style={{ background: '#1a1a1a' }}>
+          <div className="w-64 h-px overflow-hidden" style={{ background: 'var(--surface-2)' }}>
             <div
               className="h-full transition-all duration-1000"
-              style={{ background: '#444', width: `${loadingProgress}%` }}
+              style={{ background: 'var(--text-tertiary)', width: `${loadingProgress}%` }}
             />
           </div>
 
-          {/* ETA */}
-          <p className="text-xs" style={{ color: '#2a2a2a' }}>
-            {elapsed < 10
-              ? 'This takes about 60-90 seconds'
-              : `~${Math.max(0, 90 - elapsed)}s remaining`}
+          <p className="text-xs font-slate" style={{ color: 'var(--text-muted)' }}>
+            {elapsed < 10 ? 'This takes about 60–90 seconds' : `~${Math.max(0, 90 - elapsed)}s remaining`}
           </p>
         </div>
       )}
 
       {/* ── Error state ── */}
       {pageState === 'error' && (
-        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-6 bg-[#080808]">
-          <p className="text-xs tracking-[0.2em] uppercase" style={{ color: '#888' }}>
+        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-6" style={{ background: 'var(--canvas)' }}>
+          <p className="text-xs tracking-[0.2em] uppercase" style={{ color: 'var(--text-secondary)' }}>
             Something went wrong
           </p>
-          <p className="text-sm font-light max-w-sm text-center" style={{ color: '#444' }}>
+          <p className="text-sm font-light max-w-sm text-center" style={{ color: 'var(--text-muted)' }}>
             {error}
           </p>
           <button
             onClick={() => window.location.reload()}
-            className="px-8 py-2.5 text-sm font-medium tracking-widest uppercase"
-            style={{ background: '#e8e8e8', color: '#080808', borderRadius: 4 }}
+            className="px-8 py-2.5 text-sm font-medium tracking-[0.2em] uppercase"
+            style={{ background: 'var(--text-primary)', color: 'var(--text-inverse)', borderRadius: 2 }}
             onMouseEnter={e => { e.currentTarget.style.background = '#fff' }}
-            onMouseLeave={e => { e.currentTarget.style.background = '#e8e8e8' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'var(--text-primary)' }}
           >
             Try Again
           </button>
@@ -245,16 +232,16 @@ export default function RoomPage() {
 
       {/* ── Finishing overlay ── */}
       {pageState === 'finishing' && (
-        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-[#080808]">
+        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-4" style={{ background: 'var(--canvas)' }}>
           <div className="h-8 w-8 rounded-full border-t animate-spin"
-            style={{ borderColor: '#1e1e1e', borderTopColor: '#666' }} />
-          <p className="text-sm font-light tracking-wide" style={{ color: '#888' }}>
+            style={{ borderColor: 'var(--surface-2)', borderTopColor: 'var(--text-secondary)' }} />
+          <p className="text-sm font-light tracking-wide" style={{ color: 'var(--text-secondary)' }}>
             Crafting your script...
           </p>
         </div>
       )}
 
-      {/* ── P0: Confirmation modal ── */}
+      {/* ── Confirmation modal ── */}
       {pageState === 'confirming' && (
         <ConfirmEndModal
           extraction={extraction}
@@ -266,8 +253,8 @@ export default function RoomPage() {
       {/* ── Main layout ── */}
       {(pageState === 'connected' || pageState === 'confirming' || pageState === 'finishing') && credentials && (
         <>
-          {/* Left: Avatar (55%) */}
-          <div className="relative flex-[0_0_55%] h-full overflow-hidden">
+          {/* Left: Avatar (60%) with viewfinder brackets */}
+          <div className="relative flex-[0_0_60%] h-full overflow-hidden">
             <AvatarView
               credentials={credentials}
               onTranscriptUpdate={handleTranscriptUpdate}
@@ -275,9 +262,21 @@ export default function RoomPage() {
               onSessionEnded={handleSessionEnded}
             />
 
-            {/* P1: Session timer — top right of avatar panel */}
+            {/* Viewfinder corner brackets */}
+            <div className="absolute inset-4 pointer-events-none z-10">
+              <div className="absolute top-0 left-0 w-6 h-px" style={{ background: 'var(--border-standard)' }} />
+              <div className="absolute top-0 left-0 w-px h-6" style={{ background: 'var(--border-standard)' }} />
+              <div className="absolute top-0 right-0 w-6 h-px" style={{ background: 'var(--border-standard)' }} />
+              <div className="absolute top-0 right-0 w-px h-6" style={{ background: 'var(--border-standard)' }} />
+              <div className="absolute bottom-0 left-0 w-6 h-px" style={{ background: 'var(--border-standard)' }} />
+              <div className="absolute bottom-0 left-0 w-px h-6" style={{ background: 'var(--border-standard)' }} />
+              <div className="absolute bottom-0 right-0 w-6 h-px" style={{ background: 'var(--border-standard)' }} />
+              <div className="absolute bottom-0 right-0 w-px h-6" style={{ background: 'var(--border-standard)' }} />
+            </div>
+
+            {/* Session timer */}
             {sessionStartedAt > 0 && (
-              <div className="absolute top-4 right-4 z-10">
+              <div className="absolute top-5 right-5 z-10">
                 <SessionTimer
                   startedAt={sessionStartedAt}
                   maxSeconds={300}
@@ -287,49 +286,47 @@ export default function RoomPage() {
               </div>
             )}
 
-            {/* Time warning banner */}
+            {/* Time warning banners */}
             {timeWarning === 'warning' && (
-              <div className="absolute bottom-20 left-0 right-0 flex justify-center z-10">
+              <div className="absolute bottom-24 left-0 right-0 flex justify-center z-10">
                 <div className="px-4 py-2 rounded text-xs"
-                  style={{ background: 'rgba(20,15,5,0.9)', border: '1px solid #3a2a10', color: '#aa7733' }}>
+                  style={{ background: 'rgba(20,15,5,0.9)', border: '1px solid var(--accent-warm)', color: 'var(--accent-warm)' }}>
                   About 1 minute remaining — start wrapping up
                 </div>
               </div>
             )}
             {timeWarning === 'critical' && (
-              <div className="absolute bottom-20 left-0 right-0 flex justify-center z-10">
+              <div className="absolute bottom-24 left-0 right-0 flex justify-center z-10">
                 <div className="px-4 py-2 rounded text-xs timer-flash"
-                  style={{ background: 'rgba(20,5,5,0.9)', border: '1px solid #4a1515', color: '#cc4444' }}>
+                  style={{ background: 'rgba(20,5,5,0.9)', border: '1px solid var(--accent-red)', color: 'var(--accent-red)' }}>
                   30 seconds remaining — finish soon
                 </div>
               </div>
             )}
           </div>
 
-          {/* Right: Tabbed panel (45%) */}
+          {/* Right: Tabbed panel (40%) */}
           <div
-            className="flex flex-[0_0_45%] flex-col h-full border-l overflow-hidden"
-            style={{ borderColor: '#111', background: '#080808' }}
+            className="flex flex-[0_0_40%] flex-col h-full border-l overflow-hidden"
+            style={{ borderColor: 'var(--border-subtle)', background: 'var(--canvas)' }}
           >
             {/* Tab bar */}
-            <div className="flex-none flex border-b" style={{ borderColor: '#1a1a1a' }}>
+            <div className="flex-none flex border-b" style={{ borderColor: 'var(--border-subtle)' }}>
               {(['transcript', 'story'] as RightTab[]).map(tab => (
                 <button
                   key={tab}
                   onClick={() => setRightTab(tab)}
                   className="flex-1 py-3.5 text-xs tracking-[0.2em] uppercase transition-colors duration-150 relative"
-                  style={{ color: rightTab === tab ? '#aaa' : '#333' }}
+                  style={{ color: rightTab === tab ? 'var(--text-secondary)' : 'var(--text-muted)' }}
                 >
                   {tab === 'story' ? 'Story So Far' : 'Transcript'}
-                  {/* Active underline */}
                   {rightTab === tab && (
-                    <div className="absolute bottom-0 left-4 right-4 h-px" style={{ background: '#444' }} />
+                    <div className="absolute bottom-0 left-4 right-4 h-px" style={{ background: 'var(--accent-amber)' }} />
                   )}
-                  {/* Badge — unread story updates */}
                   {tab === 'story' && rightTab !== 'story' && Object.values(extraction).some(v => v !== null) && (
                     <span
                       className="absolute top-2.5 right-4 h-1.5 w-1.5 rounded-full"
-                      style={{ background: '#5a8a5a' }}
+                      style={{ background: 'var(--accent-green)' }}
                     />
                   )}
                 </button>
@@ -346,26 +343,24 @@ export default function RoomPage() {
             </div>
           </div>
 
-          {/* Bottom bar */}
+          {/* Bottom bar — clapperboard style */}
           <div
             className="absolute bottom-0 left-0 right-0 flex items-center justify-between border-t px-8 py-4"
-            style={{ borderColor: '#1a1a1a', background: 'rgba(8,8,8,0.97)' }}
+            style={{ borderColor: 'var(--border-subtle)', background: 'rgba(8,8,8,0.97)' }}
           >
-            {/* P1: Waveform indicator */}
             <WaveformIndicator
               isActive={micActive}
               isMuted={micMuted}
               isSpeaking={isSpeaking}
             />
 
-            {/* P0: Finish button — triggers confirmation modal */}
             <button
               onClick={handleFinishClick}
               disabled={pageState !== 'connected'}
-              className="px-7 py-2.5 text-sm font-medium tracking-widest uppercase transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
-              style={{ background: '#e8e8e8', color: '#080808', borderRadius: 4 }}
+              className="px-7 py-2.5 text-sm font-medium tracking-[0.2em] uppercase transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{ background: 'var(--text-primary)', color: 'var(--text-inverse)', borderRadius: 2 }}
               onMouseEnter={e => { if (pageState === 'connected') e.currentTarget.style.background = '#fff' }}
-              onMouseLeave={e => { e.currentTarget.style.background = '#e8e8e8' }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'var(--text-primary)' }}
             >
               Finish &amp; Generate Script
             </button>
@@ -374,7 +369,7 @@ export default function RoomPage() {
       )}
 
       {/* Runway attribution */}
-      <div className="absolute bottom-16 right-8 text-xs pointer-events-none" style={{ color: '#1e1e1e' }}>
+      <div className="absolute bottom-16 right-8 text-xs pointer-events-none z-10" style={{ color: 'var(--text-muted)' }}>
         Powered by Runway
       </div>
     </main>

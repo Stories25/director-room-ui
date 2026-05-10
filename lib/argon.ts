@@ -48,7 +48,6 @@ export async function createProject(title: string, prompt: string): Promise<stri
     throw new Error(`createProject failed (${res.status}): ${err}`)
   }
   const data = await res.json()
-  // Handle both flat and nested response shapes
   const id =
     data?.data?.project?.id ??
     data?.id ??
@@ -72,10 +71,57 @@ export async function generateScript(projectId: string): Promise<void> {
   }
 }
 
+// ─── GET /runway/projects (list) ───────────────────────────────────────────
+
+export interface ProjectListItem {
+  id: string
+  title: string
+  created_at: string
+}
+
+export interface ProjectDetail extends ProjectListItem {
+  user_id: string
+  input_script: string
+  updated_script: string
+  updated_at: string
+  storyboard: {
+    active_grid: number
+    grids: Record<string, { url: string; created_at: number }>
+    shots: Record<string, import('./types').StoryboardShot & { video?: { active: number; generations: unknown[] }; audio?: { active: number; generations: unknown[] } }>
+  } | null
+}
+
+export async function getProjects(): Promise<ProjectListItem[]> {
+  const res = await fetch(`${BASE_URL}/runway/projects`, {
+    method: 'GET',
+    headers: headers(),
+  })
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error(`getProjects failed (${res.status}): ${err}`)
+  }
+  const data = await res.json()
+  const projects = data?.data?.projects ?? data?.projects ?? []
+  return projects
+}
+
+export async function getProject(projectId: string): Promise<ProjectDetail> {
+  const res = await fetch(`${BASE_URL}/runway/projects/${projectId}`, {
+    method: 'GET',
+    headers: headers(),
+  })
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error(`getProject failed (${res.status}): ${err}`)
+  }
+  const data = await res.json()
+  const project = data?.data?.project ?? data?.project ?? data
+  return project
+}
+
 // ─── Step 3: POST /runway/projects/:id/storyboard ───────────────────────────
 
 export async function generateStoryboard(projectId: string): Promise<StoryboardResult> {
-  // Storyboard generation can take up to ~2 minutes
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 240_000)
   let res: Response
