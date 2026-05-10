@@ -117,32 +117,51 @@ export default function StoryboardPage() {
   const params = useParams()
   const searchParams = useSearchParams()
   const projectId = params?.id as string
-  const isBuilding = searchParams?.get('building') === '1'
 
-  const sessionStoryboard = useMemo(() => readSessionStoryboard(), [])
-  const pipeline = useMemo(() => pipelineState.read(), [])
-
-  const [pageState, setPageState] = useState<PageState>(() => {
-    // If storyboard is already cached in session → ready immediately
-    if (sessionStoryboard) return 'ready'
-    // If this tab owns the pipeline → building
-    if (isBuilding && pipeline?.projectId === projectId) return 'building'
-    // Otherwise → loading (will fetch from API)
-    return 'loading'
-  })
-
-  const [storyboard, setStoryboard] = useState<StoryboardResult | null>(sessionStoryboard)
-  const [currentStep, setCurrentStep] = useState<PipelineStep>(
-    pipeline?.step ?? 'script'
-  )
+  // Always start with 'loading' — resolved after mount so server and client
+  // render the same initial HTML (avoids hydration mismatch from sessionStorage
+  // and useSearchParams which are unavailable on the server).
+  const [pageState, setPageState] = useState<PageState>('loading')
+  const [storyboard, setStoryboard] = useState<StoryboardResult | null>(null)
+  const [currentStep, setCurrentStep] = useState<PipelineStep>('script')
   const [error, setError] = useState<string | null>(null)
+  const [upscaleState, setUpscaleState] = useState<UpscaleState>('idle')
 
-  // Upscale state — derived from storyboard on mount, updated after upscale completes
-  const [upscaleState, setUpscaleState] = useState<UpscaleState>(() =>
-    sessionStoryboard && isUpscaledAll(sessionStoryboard.shots) ? 'done' : 'idle'
-  )
+  // Pipeline ref — populated on mount from sessionStorage
+  const pipelineRef = useRef(pipelineState.read())
 
-  // Sync upscale state when storyboard is loaded from API (cold load path)
+  // Resolve the real initial state once on the client after mount
+  useEffect(() => {
+    const isBuilding = searchParams?.get('building') === '1'
+    const pipeline = pipelineRef.current
+    const cachedStoryboard = readSessionStoryboard()
+
+    if (cachedStoryboard) {
+      setStoryboard(cachedStoryboard)
+      setUpscaleState(isUpscaledAll(cachedStoryboard.shots) ? 'done' : 'idle')
+      setPageState('ready')
+      return
+    }
+
+    if (isBuilding && pipeline?.projectId === projectId) {
+      setCurrentStep(pipeline.step === 'storyboard' ? 'storyboard' : 'script')
+      setPageState('building')
+      return
+    }
+
+    // Soft-refresh lost ?building=1 but pipeline state is still in sessionStorage
+    if (pipeline?.projectId === projectId) {
+      setCurrentStep(pipeline.step === 'storyboard' ? 'storyboard' : 'script')
+      setPageState('building')
+      return
+    }
+
+    // Cold load — no local context at all
+    setPageState('loading')
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // intentionally runs once on mount only
+
+  // Sync upscale state when storyboard arrives from the cold-load API path
   useEffect(() => {
     if (storyboard && upscaleState === 'idle') {
       if (isUpscaledAll(storyboard.shots)) setUpscaleState('done')
@@ -154,15 +173,16 @@ export default function StoryboardPage() {
 
   // ── Building: run steps 2 → 3 sequentially ────────────────────────────────
   const runPipeline = useCallback(async (pid: string) => {
+    const pl = pipelineRef.current
     try {
       // Step 2 — generate script
       setCurrentStep('script')
-      pipelineState.write({ ...pipeline!, projectId: pid, step: 'script' })
+      if (pl) pipelineState.write({ ...pl, projectId: pid, step: 'script' })
       await generateScript(pid)
 
       // Step 3 — generate storyboard
       setCurrentStep('storyboard')
-      pipelineState.write({ ...pipeline!, projectId: pid, step: 'storyboard' })
+      if (pl) pipelineState.write({ ...pl, projectId: pid, step: 'storyboard' })
       const sb = await generateStoryboard(pid)
 
       // Done
@@ -176,16 +196,17 @@ export default function StoryboardPage() {
       setError(String(err))
       setPageState('error')
     }
-  }, [pipeline, router])
+  }, [router])
 
   useEffect(() => {
     if (pageState === 'building') {
       if (pipelineStarted.current) return
       pipelineStarted.current = true
-      // Resume from saved step if storyboard step was already reached
-      if (pipeline?.step === 'storyboard') {
+      const pl = pipelineRef.current
+      // Resume from storyboard step if script was already done
+      if (pl?.step === 'storyboard') {
         setCurrentStep('storyboard')
-        pipelineState.write({ ...pipeline!, step: 'storyboard' })
+        if (pl) pipelineState.write({ ...pl, step: 'storyboard' })
         generateStoryboard(projectId)
           .then(sb => {
             pipelineState.clear()
@@ -206,13 +227,7 @@ export default function StoryboardPage() {
     }
 
     if (pageState === 'loading') {
-      // No session data, no building flag — check if pipeline state exists but URL lost ?building=1
-      if (pipeline?.projectId === projectId) {
-        // This tab was mid-pipeline, soft-refresh dropped the param — resume
-        setPageState('building')
-        return
-      }
-      // Truly cold load — fetch from API
+      // Cold load — no local context, fetch from API
       let cancelled = false
       async function fetchFromAPI() {
         try {
@@ -240,7 +255,7 @@ export default function StoryboardPage() {
       fetchFromAPI()
       return () => { cancelled = true }
     }
-  }, [pageState, pipeline, projectId, router, runPipeline])
+  }, [pageState, projectId, router, runPipeline])
 
   // ── Regenerate ─────────────────────────────────────────────────────────────
   const handleRegenerate = useCallback(async () => {
@@ -282,7 +297,7 @@ export default function StoryboardPage() {
 
   // ── Building / error view ──────────────────────────────────────────────────
   if (pageState === 'building' || pageState === 'error') {
-    const script = pipeline?.script
+    const script = pipelineRef.current?.script
     if (!script) {
       // Pipeline state lost entirely — go home
       router.push('/')
@@ -292,7 +307,7 @@ export default function StoryboardPage() {
       <StoryboardWaiting
         script={script}
         projectId={projectId}
-        currentStep={pageState === 'error' ? currentStep : currentStep}
+        currentStep={currentStep}
         error={pageState === 'error' ? error : null}
         onStartOver={handleStartOver}
       />
