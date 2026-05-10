@@ -117,19 +117,41 @@ export interface VideoResult {
 
 export type SoundTrackMood = 'epic' | 'tense' | 'melancholic' | 'uplifting' | 'mysterious' | 'romantic' | 'minimal'
 
+export interface SoundVariation {
+  id: string
+  name: string
+  mood: SoundTrackMood
+  duration: number
+  url: string | null        // null until real backend returns audio
+  waveformSeed: number      // deterministic seed for procedural waveform bars
+}
+
+export interface SoundBrief {
+  tone: string
+  mood: string
+  narrativeArc: string
+  visualStyle: string
+  genre: string
+  duration: string
+  additionalDirection: string
+}
+
+export interface SoundResult {
+  projectId: string
+  prompt: string
+  additionalDirection: string | null
+  variations: SoundVariation[]
+  approvedVariationId: string | null
+  status: 'pending' | 'generating' | 'ready' | 'error'
+}
+
+/** Legacy — kept for import compat */
 export interface SoundTrack {
   id: string
   name: string
   mood: SoundTrackMood
   duration: number
   url?: string
-}
-
-export interface SoundResult {
-  projectId: string
-  videoUrl?: string
-  track?: SoundTrack
-  status: 'pending' | 'mixing' | 'ready' | 'error'
 }
 
 /**

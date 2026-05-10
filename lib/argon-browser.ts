@@ -3,7 +3,7 @@
  * Calls Argon directly from the browser — token is intentionally public for now.
  * CORS is open (*) on the Argon server so direct calls are viable.
  */
-import type { ScriptDocument, StoryboardResult, VideoResult, SoundResult } from './types'
+import type { ScriptDocument, StoryboardResult, VideoResult, SoundResult, SoundTrack } from './types'
 
 const BASE_URL   = process.env.NEXT_PUBLIC_ARGON_BASE_URL!
 const AUTH_TOKEN = process.env.NEXT_PUBLIC_ARGON_AUTH_TOKEN!
@@ -153,7 +153,7 @@ export async function mixSound(projectId: string, trackId: string): Promise<Soun
 
 // ─── GET /api/sound/tracks ──────────────────────────────────────────────────
 
-export async function getSoundTracks(): Promise<SoundResult['track'][]> {
+export async function getSoundTracks(): Promise<SoundTrack[]> {
   const res = await fetch('/api/sound/tracks')
   if (!res.ok) {
     const err = await res.text()
