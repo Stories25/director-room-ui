@@ -156,23 +156,16 @@ function VideoPlayer({
 
       {/* Below player — status bar */}
       <div
-        className="flex items-center justify-between px-5 py-3 border-t"
+        className="flex items-center px-5 py-3 border-t gap-3"
         style={{ borderColor: 'var(--border-subtle)' }}
       >
-        <div className="flex items-center gap-3">
-          <div
-            className="h-1.5 w-1.5 rounded-full"
-            style={{ background: hasVideo ? 'var(--accent-green)' : 'var(--text-muted)' }}
-          />
-          <span className="text-[10px] font-slate" style={{ color: hasVideo ? 'var(--accent-green)' : 'var(--text-muted)' }}>
-            {hasVideo ? 'Video ready' : isGenerating ? 'Generating…' : 'Not yet generated'}
-          </span>
-        </div>
-        {hasVideo && (
-          <Button variant="secondary" size="sm" onClick={onGenerate}>
-            <RefreshCw className="w-3 h-3" /> Regenerate
-          </Button>
-        )}
+        <div
+          className="h-1.5 w-1.5 rounded-full"
+          style={{ background: hasVideo ? 'var(--accent-green)' : 'var(--text-muted)' }}
+        />
+        <span className="text-[10px] font-slate" style={{ color: hasVideo ? 'var(--accent-green)' : 'var(--text-muted)' }}>
+          {hasVideo ? 'Video ready' : isGenerating ? 'Generating…' : 'Not yet generated'}
+        </span>
       </div>
     </div>
   )
@@ -185,11 +178,15 @@ function ClipRow({
   index,
   shot,
   isFirst,
+  onRegenerate,
+  isRegenerating,
 }: {
   clip: VideoClip
   index: number
   shot?: StoryboardShot
   isFirst: boolean
+  onRegenerate: (shotKey: string) => void
+  isRegenerating: boolean
 }) {
   const [hovered, setHovered] = useState(false)
   const thumbnail = clip.thumbnailUrl ?? (shot ? getActiveImageUrl(shot) : null)
@@ -351,6 +348,24 @@ function ClipRow({
             </p>
           )}
         </div>
+
+        {/* Clip-level regenerate — appears on hover for ready clips */}
+        <div
+          className="flex justify-end mt-4 transition-opacity duration-150"
+          style={{ opacity: hovered ? 1 : 0 }}
+        >
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => onRegenerate(clip.shotKey)}
+            disabled={isRegenerating}
+          >
+            {isRegenerating
+              ? <><Loader2 className="w-3 h-3 animate-spin" /> Regenerating</>
+              : <><RefreshCw className="w-3 h-3" /> Regenerate clip</>
+            }
+          </Button>
+        </div>
       </div>
     </div>
   )
@@ -383,6 +398,7 @@ export default function VideoPage() {
   const [video, setVideo] = useState<VideoResult | null>(null)
   const [pageState, setPageState] = useState<'loading' | 'ready' | 'generating' | 'error'>('loading')
   const [error, setError] = useState<string | null>(null)
+  const [regeneratingClip, setRegeneratingClip] = useState<string | null>(null)
 
   useEffect(() => {
     const cachedStoryboard = readSessionStoryboard()
@@ -442,6 +458,33 @@ export default function VideoPage() {
       setPageState('ready')
     }
   }, [projectId, storyboard])
+
+  const handleRegenerateClip = useCallback(async (shotKey: string) => {
+    if (!storyboard || !video) return
+    setRegeneratingClip(shotKey)
+    try {
+      // Stub: regenerate just this one clip — send only its shot data
+      const singleShot = { [shotKey]: storyboard.shots[shotKey] }
+      const res = await fetch('/api/video/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, shots: singleShot }),
+      })
+      if (!res.ok) throw new Error('Clip regeneration failed')
+      const { video: result } = await res.json()
+      // Merge the regenerated clip back into the existing video result
+      const updatedClips = video.clips.map(c =>
+        c.shotKey === shotKey ? (result.clips[0] ?? c) : c
+      )
+      const updated: VideoResult = { ...video, clips: updatedClips }
+      sessionStorage.setItem('directors-room-video', JSON.stringify(updated))
+      setVideo(updated)
+    } catch (err) {
+      setError(String(err))
+    } finally {
+      setRegeneratingClip(null)
+    }
+  }, [projectId, storyboard, video])
 
   // ── Loading ──────────────────────────────────────────────────────────────────
   if (pageState === 'loading') {
@@ -555,6 +598,8 @@ export default function VideoPage() {
                     index={i}
                     shot={storyboard?.shots[clip.shotKey]}
                     isFirst={i === 0}
+                    onRegenerate={handleRegenerateClip}
+                    isRegenerating={regeneratingClip === clip.shotKey}
                   />
                 ))}
               </div>
