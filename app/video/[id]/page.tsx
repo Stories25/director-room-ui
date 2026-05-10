@@ -104,9 +104,23 @@ function VideoPlayer({
       const mimeType = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm']
         .find(m => MediaRecorder.isTypeSupported(m)) ?? 'video/webm'
 
+      // Set up AudioContext to capture audio from each clip
+      const audioCtx = new AudioContext()
+      const audioDest = audioCtx.createMediaStreamDestination()
+
       const chunks: Blob[] = []
-      const stream = canvas.captureStream(30)
-      const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 4_000_000 })
+      const videoStream = canvas.captureStream(30)
+
+      // Combine canvas video track + audio destination track
+      const combinedStream = new MediaStream([
+        ...videoStream.getVideoTracks(),
+        ...audioDest.stream.getAudioTracks(),
+      ])
+
+      const mimeTypeWithAudio = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm']
+        .find(m => MediaRecorder.isTypeSupported(m)) ?? mimeType
+
+      const recorder = new MediaRecorder(combinedStream, { mimeType: mimeTypeWithAudio, videoBitsPerSecond: 4_000_000 })
       recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data) }
 
       const startTime = Date.now()
@@ -120,9 +134,13 @@ function VideoPlayer({
           const vid = document.createElement('video')
           vid.src = clip.url!
           vid.crossOrigin = 'anonymous'
-          vid.muted = true
+          vid.muted = false  // unmuted — audio captured via AudioContext
           vid.playsInline = true
           vid.preload = 'auto'
+
+          // Route this clip's audio into the shared AudioContext destination
+          const source = audioCtx.createMediaElementSource(vid)
+          source.connect(audioDest)
 
           vid.onloadeddata = () => {
             vid.play().catch(reject)
@@ -141,20 +159,22 @@ function VideoPlayer({
 
           vid.onended = () => {
             cancelAnimationFrame(rafId)
-            // Draw final frame
             ctx.drawImage(vid, 0, 0, canvas.width, canvas.height)
+            source.disconnect()
             setStitchProgress(Math.round(((i + 1) / readyClips.length) * 100))
             resolve()
           }
         })
       }
 
+      audioCtx.close()
+
       const durationMs = Date.now() - startTime
       recorder.stop()
 
       await new Promise<void>(resolve => { recorder.onstop = () => resolve() })
 
-      const rawBlob = new Blob(chunks, { type: mimeType })
+      const rawBlob = new Blob(chunks, { type: mimeTypeWithAudio })
 
       // Fix WebM duration metadata so the scrubber works correctly
       const fixedBlob = await fixWebmDuration(rawBlob, durationMs, { logger: false })
