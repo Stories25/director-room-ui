@@ -1,53 +1,44 @@
 'use client'
 
-import { useEffect, useState } from 'react'
 import { ScriptDocument } from '@/lib/types'
+import { PipelineStep } from '@/lib/pipeline-state'
 
 interface StoryboardWaitingProps {
   script: ScriptDocument
+  projectId: string
+  currentStep: PipelineStep
+  error?: string | null
+  onStartOver: () => void
 }
 
-const PIPELINE_STEPS = [
-  { label: 'Creating your project',    duration: 4  },
-  { label: 'Structuring the script',   duration: 8  },
-  { label: 'Analysing shots',          duration: 6  },
-  { label: 'Generating storyboard',    duration: 55 },
-  { label: 'Rendering frames',         duration: 20 },
+const STEPS: { key: PipelineStep; label: string }[] = [
+  { key: 'project',    label: 'Project created'      },
+  { key: 'script',     label: 'Structuring script'   },
+  { key: 'storyboard', label: 'Rendering frames'     },
 ]
+
+const STEP_ORDER: PipelineStep[] = ['project', 'script', 'storyboard', 'done']
+
+function stepIndex(step: PipelineStep): number {
+  return STEP_ORDER.indexOf(step)
+}
 
 const CELLS = Array.from({ length: 9 }, (_, i) => i)
 
-export default function StoryboardWaiting({ script }: StoryboardWaitingProps) {
-  const [elapsed, setElapsed] = useState(0)
-  // Elapsed timer
-  useEffect(() => {
-    const t = setInterval(() => setElapsed(s => s + 1), 1000)
-    return () => clearInterval(t)
-  }, [])
-
-  // Derive step index directly from elapsed
-  const stepIndex = (() => {
-    let acc = 0
-    for (let i = 0; i < PIPELINE_STEPS.length; i++) {
-      acc += PIPELINE_STEPS[i].duration
-      if (elapsed < acc) return i
-    }
-    return PIPELINE_STEPS.length - 1
-  })()
-
-  // Derive revealed cells directly from elapsed
-  const revealedCells = elapsed === 0
-    ? []
-    : Array.from({ length: Math.min(Math.floor(elapsed / 6) + 1, CELLS.length) }, (_, i) => i)
-
-  const totalDuration = PIPELINE_STEPS.reduce((s, p) => s + p.duration, 0)
-  const progress = Math.min((elapsed / totalDuration) * 100, 95)
-  const currentStep = PIPELINE_STEPS[stepIndex]
+export default function StoryboardWaiting({
+  script,
+  projectId,
+  currentStep,
+  error,
+  onStartOver,
+}: StoryboardWaitingProps) {
+  const currentIdx = stepIndex(currentStep)
+  const showShimmer = currentStep === 'storyboard'
 
   return (
     <div className="flex h-screen w-screen flex-col items-center justify-center gap-10" style={{ background: 'var(--canvas)' }}>
 
-      {/* Title + logline — like a slate on the processing bench */}
+      {/* Title + logline */}
       <div className="text-center space-y-2">
         <p className="text-xs tracking-[0.3em] uppercase font-slate" style={{ color: 'var(--text-muted)' }}>
           Processing
@@ -60,67 +51,113 @@ export default function StoryboardWaiting({ script }: StoryboardWaitingProps) {
         </p>
       </div>
 
-      {/* 3×3 grid — frames developing in chemical bath */}
-      <div
-        className="grid gap-2"
-        style={{ gridTemplateColumns: 'repeat(3, 152px)', gridTemplateRows: 'repeat(3, 96px)' }}
-      >
-        {CELLS.map(i => {
-          const isRevealed = revealedCells.includes(i)
-          return (
+      {/* 3×3 shimmer grid — visible during storyboard step only */}
+      {showShimmer && (
+        <div
+          className="grid gap-2"
+          style={{ gridTemplateColumns: 'repeat(3, 152px)', gridTemplateRows: 'repeat(3, 96px)' }}
+        >
+          {CELLS.map(i => (
             <div
               key={i}
-              className={`rounded-sm overflow-hidden ${isRevealed ? 'cell-reveal' : ''}`}
-              style={{
-                opacity: isRevealed ? undefined : 0.3,
-                animationDelay: `${i * 0.05}s`,
-              }}
+              className="rounded-sm overflow-hidden cell-reveal"
+              style={{ animationDelay: `${i * 0.08}s` }}
             >
               <div
-                className={`w-full h-full ${isRevealed ? 'shimmer' : ''}`}
-                style={{
-                  background: isRevealed ? undefined : 'var(--surface-1)',
-                  borderRadius: 2,
-                  position: 'relative',
-                  overflow: 'hidden',
-                }}
+                className="w-full h-full shimmer"
+                style={{ borderRadius: 2, position: 'relative', overflow: 'hidden' }}
               >
-                {isRevealed && (
-                  <div
-                    className="absolute bottom-1.5 left-2 text-[9px] font-slate"
-                    style={{ color: 'var(--text-muted)' }}
-                  >
-                    {Math.floor(i / 3) + 1}.{(i % 3) + 1}
-                  </div>
+                <div
+                  className="absolute bottom-1.5 left-2 text-[9px] font-slate"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  {Math.floor(i / 3) + 1}.{(i % 3) + 1}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* 3-step checklist */}
+      <div className="flex flex-col items-start gap-3" style={{ minWidth: 220 }}>
+        {STEPS.map(({ key, label }) => {
+          const idx = stepIndex(key)
+          const isDone    = currentIdx > idx
+          const isActive  = currentIdx === idx
+          const isPending = currentIdx < idx
+
+          return (
+            <div key={key} className="flex items-center gap-3">
+              {/* Status indicator */}
+              <div className="flex-none" style={{ width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {isDone ? (
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                    <circle cx="7" cy="7" r="6.5" stroke="var(--accent-green)" strokeOpacity="0.5" />
+                    <path d="M4 7l2 2 4-4" stroke="var(--accent-green)" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                ) : isActive ? (
+                  <span
+                    className="inline-block rounded-full border-t animate-spin"
+                    style={{
+                      width: 12,
+                      height: 12,
+                      borderWidth: 1.5,
+                      borderColor: 'var(--surface-2)',
+                      borderTopColor: 'var(--text-secondary)',
+                    }}
+                  />
+                ) : (
+                  <span
+                    className="inline-block rounded-full"
+                    style={{ width: 6, height: 6, background: 'var(--surface-2)' }}
+                  />
                 )}
               </div>
+
+              {/* Label */}
+              <p
+                className={`text-sm font-light font-slate ${isActive ? 'breathe' : ''}`}
+                style={{
+                  color: isDone
+                    ? 'var(--text-tertiary)'
+                    : isActive
+                    ? 'var(--text-primary)'
+                    : 'var(--text-muted)',
+                  opacity: isPending ? 0.4 : 1,
+                  transition: 'color 0.3s, opacity 0.3s',
+                }}
+              >
+                {label}
+                {isDone ? ' ✓' : isActive ? '…' : ''}
+              </p>
             </div>
           )
         })}
       </div>
 
-      {/* Current step — chemical processing log style */}
-      <div className="flex flex-col items-center gap-3">
-        <p className="text-sm font-light breathe font-slate" style={{ color: 'var(--text-secondary)' }}>
-          {currentStep?.label}...
-        </p>
+      {/* Project ID — small slate reference */}
+      <p className="text-[10px] font-slate tabular-nums" style={{ color: 'var(--text-muted)', letterSpacing: '0.05em' }}>
+        {projectId}
+      </p>
 
-        {/* Progress bar — green tint like developer fluid */}
-        <div className="w-64 h-px overflow-hidden rounded-sm" style={{ background: 'var(--surface-2)' }}>
-          <div
-            className="h-full transition-all duration-1000"
-            style={{ background: 'var(--accent-green)', width: `${progress}%`, opacity: 0.6 }}
-          />
+      {/* Error state */}
+      {error && (
+        <div className="flex flex-col items-center gap-3 text-center" style={{ maxWidth: 360 }}>
+          <p className="text-xs" style={{ color: 'var(--accent-red)' }}>{error}</p>
+          <button
+            onClick={onStartOver}
+            className="text-xs tracking-[0.2em] uppercase transition-colors"
+            style={{ color: 'var(--text-tertiary)' }}
+            onMouseEnter={e => { e.currentTarget.style.color = 'var(--text-secondary)' }}
+            onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-tertiary)' }}
+          >
+            ← Start over
+          </button>
         </div>
+      )}
 
-        <p className="text-xs tabular-nums font-slate" style={{ color: 'var(--text-muted)' }}>
-          {elapsed < 10
-            ? 'This takes 60–90 seconds'
-            : `~${Math.max(0, totalDuration - elapsed)}s remaining`}
-        </p>
-      </div>
-
-      {/* Runway attribution */}
+      {/* Attribution */}
       <div className="absolute bottom-6 right-8 text-xs pointer-events-none" style={{ color: 'var(--text-muted)' }}>
         Powered by Runway
       </div>

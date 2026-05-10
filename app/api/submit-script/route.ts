@@ -1,3 +1,8 @@
+/**
+ * @deprecated The frontend now drives the Argon pipeline directly via lib/argon-browser.ts.
+ * Steps are orchestrated in app/storyboard/[id]/page.tsx with per-step UI in components/StoryboardWaiting.tsx.
+ * This route is kept for backwards compatibility only — remove after one release cycle.
+ */
 import { NextRequest, NextResponse } from 'next/server'
 import { ScriptDocument } from '@/lib/types'
 import { buildPrompt, createProject, generateScript, generateStoryboard } from '@/lib/argon'

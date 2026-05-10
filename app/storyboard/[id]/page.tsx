@@ -1,11 +1,16 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
-import { useRouter, useParams } from 'next/navigation'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
+import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { StoryboardResult, StoryboardShot } from '@/lib/types'
 import { Sprocket, TopBar } from '@/components/shell/Shell'
+import { generateScript, generateStoryboard, buildPrompt, createProject, upscaleStoryboard } from '@/lib/argon-browser'
+import { pipelineState, PipelineStep } from '@/lib/pipeline-state'
+import StoryboardWaiting from '@/components/StoryboardWaiting'
+import { isUpscaledAll } from '@/lib/types'
 
-type PageState = 'loading' | 'ready' | 'regenerating' | 'error'
+type PageState = 'loading' | 'building' | 'ready' | 'error'
+type UpscaleState = 'idle' | 'upscaling' | 'done' | 'error'
 
 const MAX_W = 1080
 
@@ -45,14 +50,11 @@ function ShotCard({ shotKey, shot }: { shotKey: string; shot: StoryboardShot }) 
         e.currentTarget.style.transform = 'translateY(0)'
       }}
     >
-      {/* Image — with inner vignette for light-table well effect */}
+      {/* Image */}
       <div className="relative" style={{ aspectRatio: '16/9', background: 'var(--surface-2)' }}>
-        {/* Inner vignette overlay */}
         <div
           className="absolute inset-0 z-10 pointer-events-none"
-          style={{
-            boxShadow: 'inset 0 0 40px rgba(0,0,0,0.4)',
-          }}
+          style={{ boxShadow: 'inset 0 0 40px rgba(0,0,0,0.4)' }}
         />
         {url ? (
           <>
@@ -69,12 +71,10 @@ function ShotCard({ shotKey, shot }: { shotKey: string; shot: StoryboardShot }) 
         ) : (
           <div className="absolute inset-0 shimmer" />
         )}
-        {/* Film frame number badge */}
         <div className="absolute top-3 left-3 z-20 px-1.5 py-0.5 rounded text-[10px] font-slate"
           style={{ background: 'rgba(0,0,0,0.75)', color: 'var(--text-tertiary)' }}>
           {shotKey}
         </div>
-        {/* Timecode badge */}
         {sd?.duration && (
           <div className="absolute top-3 right-3 z-20 px-1.5 py-0.5 rounded text-[10px] font-slate"
             style={{ background: 'rgba(0,0,0,0.75)', color: 'var(--accent-amber)' }}>
@@ -83,7 +83,7 @@ function ShotCard({ shotKey, shot }: { shotKey: string; shot: StoryboardShot }) 
         )}
       </div>
 
-      {/* Metadata — camera report style */}
+      {/* Metadata */}
       <div className="p-4 space-y-2 flex-1">
         {sd?.framing && (
           <p className="text-[10px] tracking-[0.15em] uppercase" style={{ color: 'var(--text-muted)' }}>
@@ -115,79 +115,194 @@ function readSessionStoryboard(): StoryboardResult | null {
 export default function StoryboardPage() {
   const router = useRouter()
   const params = useParams()
+  const searchParams = useSearchParams()
   const projectId = params?.id as string
+  const isBuilding = searchParams?.get('building') === '1'
 
-  const sessionData = useMemo(() => readSessionStoryboard(), [])
+  const sessionStoryboard = useMemo(() => readSessionStoryboard(), [])
+  const pipeline = useMemo(() => pipelineState.read(), [])
 
-  const [pageState, setPageState] = useState<PageState>(() =>
-    sessionData ? 'ready' : 'loading'
+  const [pageState, setPageState] = useState<PageState>(() => {
+    // If storyboard is already cached in session → ready immediately
+    if (sessionStoryboard) return 'ready'
+    // If this tab owns the pipeline → building
+    if (isBuilding && pipeline?.projectId === projectId) return 'building'
+    // Otherwise → loading (will fetch from API)
+    return 'loading'
+  })
+
+  const [storyboard, setStoryboard] = useState<StoryboardResult | null>(sessionStoryboard)
+  const [currentStep, setCurrentStep] = useState<PipelineStep>(
+    pipeline?.step ?? 'script'
   )
-  const [storyboard, setStoryboard] = useState<StoryboardResult | null>(sessionData)
   const [error, setError] = useState<string | null>(null)
 
+  // Upscale state — derived from storyboard on mount, updated after upscale completes
+  const [upscaleState, setUpscaleState] = useState<UpscaleState>(() =>
+    sessionStoryboard && isUpscaledAll(sessionStoryboard.shots) ? 'done' : 'idle'
+  )
+
+  // Sync upscale state when storyboard is loaded from API (cold load path)
   useEffect(() => {
-    if (sessionData) return
-
-    let cancelled = false
-
-    async function fetchFromAPI() {
-      try {
-        const res = await fetch(`/api/projects/${projectId}`)
-        if (!res.ok) throw new Error('Project not found')
-        const { project } = await res.json()
-        if (!project?.storyboard?.shots) {
-          router.push('/')
-          return
-        }
-        if (cancelled) return
-        const sb: StoryboardResult = {
-          projectId: project.id,
-          shots: project.storyboard.shots,
-          activeGrid: project.storyboard.active_grid,
-        }
-        setStoryboard(sb)
-        setPageState('ready')
-      } catch (err) {
-        if (cancelled) return
-        console.error('[storyboard] API fetch failed:', err)
-        setError(String(err))
-        setPageState('error')
-      }
+    if (storyboard && upscaleState === 'idle') {
+      if (isUpscaledAll(storyboard.shots)) setUpscaleState('done')
     }
-    fetchFromAPI()
+  }, [storyboard, upscaleState])
 
-    return () => { cancelled = true }
-  }, [router, projectId, sessionData])
+  // Guard: ensure runPipeline only fires once even in React StrictMode
+  const pipelineStarted = useRef(false)
 
+  // ── Building: run steps 2 → 3 sequentially ────────────────────────────────
+  const runPipeline = useCallback(async (pid: string) => {
+    try {
+      // Step 2 — generate script
+      setCurrentStep('script')
+      pipelineState.write({ ...pipeline!, projectId: pid, step: 'script' })
+      await generateScript(pid)
+
+      // Step 3 — generate storyboard
+      setCurrentStep('storyboard')
+      pipelineState.write({ ...pipeline!, projectId: pid, step: 'storyboard' })
+      const sb = await generateStoryboard(pid)
+
+      // Done
+      pipelineState.clear()
+      sessionStorage.setItem('directors-room-storyboard', JSON.stringify(sb))
+      setStoryboard(sb)
+      setPageState('ready')
+      router.replace(`/storyboard/${pid}`)
+    } catch (err) {
+      console.error('[storyboard] Pipeline failed:', err)
+      setError(String(err))
+      setPageState('error')
+    }
+  }, [pipeline, router])
+
+  useEffect(() => {
+    if (pageState === 'building') {
+      if (pipelineStarted.current) return
+      pipelineStarted.current = true
+      // Resume from saved step if storyboard step was already reached
+      if (pipeline?.step === 'storyboard') {
+        setCurrentStep('storyboard')
+        pipelineState.write({ ...pipeline!, step: 'storyboard' })
+        generateStoryboard(projectId)
+          .then(sb => {
+            pipelineState.clear()
+            sessionStorage.setItem('directors-room-storyboard', JSON.stringify(sb))
+            setStoryboard(sb)
+            setPageState('ready')
+            router.replace(`/storyboard/${projectId}`)
+          })
+          .catch(err => {
+            console.error('[storyboard] Step 3 failed:', err)
+            setError(String(err))
+            setPageState('error')
+          })
+      } else {
+        runPipeline(projectId)
+      }
+      return
+    }
+
+    if (pageState === 'loading') {
+      // No session data, no building flag — check if pipeline state exists but URL lost ?building=1
+      if (pipeline?.projectId === projectId) {
+        // This tab was mid-pipeline, soft-refresh dropped the param — resume
+        setPageState('building')
+        return
+      }
+      // Truly cold load — fetch from API
+      let cancelled = false
+      async function fetchFromAPI() {
+        try {
+          const res = await fetch(`/api/projects/${projectId}`)
+          if (!res.ok) throw new Error('Project not found')
+          const { project } = await res.json()
+          if (cancelled) return
+          if (!project?.storyboard?.shots || Object.keys(project.storyboard.shots).length === 0) {
+            router.push('/')
+            return
+          }
+          const sb: StoryboardResult = {
+            projectId: project.id,
+            shots: project.storyboard.shots,
+            activeGrid: project.storyboard.active_grid,
+          }
+          setStoryboard(sb)
+          setPageState('ready')
+        } catch (err) {
+          if (cancelled) return
+          console.error('[storyboard] Fetch failed:', err)
+          router.push('/')
+        }
+      }
+      fetchFromAPI()
+      return () => { cancelled = true }
+    }
+  }, [pageState, pipeline, projectId, router, runPipeline])
+
+  // ── Regenerate ─────────────────────────────────────────────────────────────
   const handleRegenerate = useCallback(async () => {
     const storedScript = sessionStorage.getItem('directors-room-script')
     if (!storedScript) return
-    setPageState('regenerating')
-    setError(null)
     try {
       const script = JSON.parse(storedScript)
-      const res = await fetch('/api/submit-script', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ script }),
-      })
-      if (!res.ok) {
-        const err = await res.json()
-        throw new Error(err.error || 'Regeneration failed')
-      }
-      const { storyboard: next, projectId: nextId } = await res.json()
-      sessionStorage.setItem('directors-room-storyboard', JSON.stringify(next))
-      setStoryboard(next)
-      setPageState('ready')
-      router.replace(`/storyboard/${nextId}`)
+      const prompt = buildPrompt(script)
+      const newProjectId = await createProject(script.title || "Director's Room Teaser", prompt)
+      pipelineState.write({ projectId: newProjectId, script, step: 'script', startedAt: Date.now() })
+      // Navigate to the new project — the building flow will kick in on mount
+      router.push(`/storyboard/${newProjectId}?building=1`)
     } catch (err) {
+      console.error('[storyboard] Regenerate failed at step 1:', err)
       setError(String(err))
       setPageState('error')
     }
   }, [router])
 
+  const handleStartOver = useCallback(() => {
+    pipelineState.clear()
+    router.push('/')
+  }, [router])
+
+  // ── Upscale ────────────────────────────────────────────────────────────────
+  const handleUpscale = useCallback(async () => {
+    if (!storyboard) return
+    setUpscaleState('upscaling')
+    try {
+      const upscaled = await upscaleStoryboard(projectId)
+      sessionStorage.setItem('directors-room-storyboard', JSON.stringify(upscaled))
+      setStoryboard(upscaled)
+      setUpscaleState('done')
+    } catch (err) {
+      console.error('[storyboard] Upscale failed:', err)
+      setUpscaleState('error')
+    }
+  }, [storyboard, projectId])
+
+  // ── Building / error view ──────────────────────────────────────────────────
+  if (pageState === 'building' || pageState === 'error') {
+    const script = pipeline?.script
+    if (!script) {
+      // Pipeline state lost entirely — go home
+      router.push('/')
+      return null
+    }
+    return (
+      <StoryboardWaiting
+        script={script}
+        projectId={projectId}
+        currentStep={pageState === 'error' ? currentStep : currentStep}
+        error={pageState === 'error' ? error : null}
+        onStartOver={handleStartOver}
+      />
+    )
+  }
+
+  // ── Loading ────────────────────────────────────────────────────────────────
   if (pageState === 'loading' || !storyboard) return null
 
+  // ── Ready ──────────────────────────────────────────────────────────────────
   const shotKeys = sortShotKeys(Object.keys(storyboard.shots))
 
   return (
@@ -200,37 +315,59 @@ export default function StoryboardPage() {
           { label: 'Storyboard', current: true },
         ]}
         rightAction={
-          <button
-            onClick={handleRegenerate}
-            disabled={pageState === 'regenerating'}
-            className="px-5 py-2 text-xs tracking-[0.2em] uppercase border transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
-            style={{ borderColor: 'var(--border-standard)', color: 'var(--text-tertiary)', borderRadius: 2 }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-emphasis)'; e.currentTarget.style.color = 'var(--text-secondary)' }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-standard)'; e.currentTarget.style.color = 'var(--text-tertiary)' }}
-          >
-            {pageState === 'regenerating' ? 'Regenerating...' : '↺ Regenerate'}
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Upscale button */}
+            <button
+              onClick={handleUpscale}
+              disabled={upscaleState === 'upscaling' || upscaleState === 'done'}
+              title={upscaleState === 'done' ? 'All frames are already upscaled to 2K' : 'Upscale all frames to 2K'}
+              className="px-5 py-2 text-xs tracking-[0.2em] uppercase border transition-all duration-200 disabled:cursor-not-allowed flex items-center gap-2"
+              style={{
+                borderColor: upscaleState === 'done' ? 'var(--accent-green)' : upscaleState === 'error' ? 'rgba(204,68,68,0.4)' : 'var(--border-standard)',
+                color: upscaleState === 'done' ? 'var(--accent-green)' : upscaleState === 'error' ? 'var(--accent-red)' : 'var(--text-tertiary)',
+                opacity: upscaleState === 'upscaling' ? 0.6 : 1,
+                borderRadius: 2,
+              }}
+              onMouseEnter={e => {
+                if (upscaleState === 'idle') {
+                  e.currentTarget.style.borderColor = 'var(--border-emphasis)'
+                  e.currentTarget.style.color = 'var(--text-secondary)'
+                }
+              }}
+              onMouseLeave={e => {
+                if (upscaleState === 'idle') {
+                  e.currentTarget.style.borderColor = 'var(--border-standard)'
+                  e.currentTarget.style.color = 'var(--text-tertiary)'
+                }
+              }}
+            >
+              {upscaleState === 'upscaling' && (
+                <span
+                  className="inline-block rounded-full border-t animate-spin"
+                  style={{ width: 10, height: 10, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.2)', borderTopColor: 'var(--text-tertiary)' }}
+                />
+              )}
+              {upscaleState === 'done'      && '✓ Upscaled 2K'}
+              {upscaleState === 'upscaling' && 'Upscaling…'}
+              {upscaleState === 'idle'      && '↑ Upscale 2K'}
+              {upscaleState === 'error'     && '↑ Retry Upscale'}
+            </button>
+
+            {/* Regenerate button */}
+            <button
+              onClick={handleRegenerate}
+              className="px-5 py-2 text-xs tracking-[0.2em] uppercase border transition-all duration-200"
+              style={{ borderColor: 'var(--border-standard)', color: 'var(--text-tertiary)', borderRadius: 2 }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-emphasis)'; e.currentTarget.style.color = 'var(--text-secondary)' }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-standard)'; e.currentTarget.style.color = 'var(--text-tertiary)' }}
+            >
+              ↺ Regenerate
+            </button>
+          </div>
         }
       />
 
-      {/* ── Regenerating overlay ── */}
-      {(pageState === 'regenerating' || pageState === 'error') && (
-        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-4" style={{ background: 'var(--canvas)' }}>
-          <div className="h-8 w-8 rounded-full border-t animate-spin"
-            style={{ borderColor: 'var(--surface-2)', borderTopColor: 'var(--text-secondary)' }} />
-          <p className="text-sm font-light" style={{ color: 'var(--text-secondary)' }}>
-            {pageState === 'error' ? 'Something went wrong' : 'Generating new storyboard...'}
-          </p>
-          {error && (
-            <p className="text-xs font-slate max-w-sm text-center" style={{ color: 'var(--accent-red)' }}>{error}</p>
-          )}
-          <p className="text-xs font-slate" style={{ color: 'var(--text-muted)' }}>
-            {pageState === 'error' ? '' : 'This takes 60–90 seconds'}
-          </p>
-        </div>
-      )}
-
-      {/* ── Grid — light table ── */}
+      {/* Grid */}
       <div className="flex-1 overflow-y-auto w-full">
         <div style={{ width: MAX_W, margin: '0 auto', paddingTop: 32, paddingBottom: 32 }}>
           <div className="grid gap-6" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
@@ -241,7 +378,7 @@ export default function StoryboardPage() {
         </div>
       </div>
 
-      {/* ── Bottom bar ── */}
+      {/* Bottom bar */}
       <div className="flex-none w-full border-t" style={{ borderColor: 'var(--border-subtle)', background: 'var(--surface-1)' }}>
         <div className="flex items-center justify-between py-4" style={{ width: MAX_W, margin: '0 auto' }}>
           <div className="flex items-center gap-3">

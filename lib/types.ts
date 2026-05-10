@@ -56,9 +56,12 @@ export interface SessionCredentials {
 // Storyboard types
 export interface StoryboardShotImage {
   version: number
-  grid_no: number
+  grid_no: number | null
   url: string
   created_at: number
+  upscaled?: boolean
+  upscale_target_res?: string
+  source_image_version?: number
 }
 
 export interface StoryboardShotData {
@@ -87,4 +90,20 @@ export interface StoryboardResult {
   projectId: string
   shots: Record<string, StoryboardShot>
   activeGrid: number
+}
+
+/**
+ * Derive whether every shot has been upscaled by checking the active generation
+ * for each shot. Returns false if there are no shots.
+ */
+export function isUpscaledAll(shots: Record<string, StoryboardShot>): boolean {
+  const keys = Object.keys(shots)
+  if (keys.length === 0) return false
+  return keys.every(key => {
+    const shot = shots[key]
+    const { active, generations } = shot.image
+    if (!generations || generations.length === 0) return false
+    const activeGen = generations.find(g => g.version === active) ?? generations[generations.length - 1]
+    return activeGen?.upscaled === true
+  })
 }

@@ -2,14 +2,13 @@
 
 import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import dynamic from 'next/dynamic'
 import ScriptDocumentView from '@/components/ScriptDocument'
 import { ScriptDocument } from '@/lib/types'
 import { Sprocket, TopBar } from '@/components/shell/Shell'
+import { buildPrompt, createProject } from '@/lib/argon-browser'
+import { pipelineState } from '@/lib/pipeline-state'
 
-const StoryboardWaiting = dynamic(() => import('@/components/StoryboardWaiting'), { ssr: false })
-
-type PageState = 'loading' | 'review' | 'building' | 'error'
+type PageState = 'loading' | 'review' | 'creating' | 'error'
 
 function readSessionScript(): ScriptDocument | null {
   if (typeof window === 'undefined') return null
@@ -27,35 +26,23 @@ export default function ScriptPage() {
 
   useEffect(() => {
     if (sessionData) return
-    // No session data — redirect to home
     router.push('/')
   }, [router, sessionData])
 
   const handleSend = async () => {
     if (!script) return
-    setPageState('building')
+    setError(null)
+    setPageState('creating')
     try {
-      const res = await fetch('/api/submit-script', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ script }),
-      })
-      if (!res.ok) {
-        const e = await res.json()
-        throw new Error(e.error || 'Pipeline failed')
-      }
-      const { storyboard, projectId } = await res.json()
-      sessionStorage.setItem('directors-room-storyboard', JSON.stringify(storyboard))
-      router.push(`/storyboard/${projectId}`)
+      const prompt = buildPrompt(script)
+      const projectId = await createProject(script.title || "Director's Room Teaser", prompt)
+      pipelineState.write({ projectId, script, step: 'script', startedAt: Date.now() })
+      router.push(`/storyboard/${projectId}?building=1`)
     } catch (err) {
-      console.error('[script] Pipeline failed:', err)
+      console.error('[script] Step 1 failed:', err)
       setError(String(err))
       setPageState('error')
     }
-  }
-
-  if (pageState === 'building' && script) {
-    return <StoryboardWaiting script={script} />
   }
 
   if (!script) return null
@@ -95,7 +82,7 @@ export default function ScriptPage() {
         </div>
       </div>
 
-      {/* Bottom action bar — clapperboard style */}
+      {/* Bottom action bar */}
       <div className="flex-none w-full border-t" style={{ borderColor: 'var(--border-subtle)', background: 'var(--surface-1)' }}>
         <div className="flex items-center justify-between py-5" style={{ width: 720, margin: '0 auto' }}>
           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
@@ -103,13 +90,23 @@ export default function ScriptPage() {
           </p>
           <button
             onClick={handleSend}
-            disabled={pageState === 'building'}
-            className="px-8 py-3 text-sm font-medium tracking-[0.2em] uppercase transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
+            disabled={pageState === 'creating'}
+            className="px-8 py-3 text-sm font-medium tracking-[0.2em] uppercase transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-3"
             style={{ background: 'var(--text-primary)', color: 'var(--text-inverse)', borderRadius: 2 }}
-            onMouseEnter={e => { e.currentTarget.style.background = '#fff' }}
+            onMouseEnter={e => { if (pageState !== 'creating') e.currentTarget.style.background = '#fff' }}
             onMouseLeave={e => { e.currentTarget.style.background = 'var(--text-primary)' }}
           >
-            Build Storyboard →
+            {pageState === 'creating' ? (
+              <>
+                <span
+                  className="inline-block h-3 w-3 rounded-full border-t animate-spin"
+                  style={{ borderColor: 'rgba(255,255,255,0.3)', borderTopColor: '#fff' }}
+                />
+                Creating project…
+              </>
+            ) : (
+              'Build Storyboard →'
+            )}
           </button>
         </div>
       </div>
