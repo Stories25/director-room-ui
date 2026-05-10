@@ -334,26 +334,48 @@ export default function SoundPage() {
 
     if (cachedVideo) setVideo(cachedVideo)
 
+    // Restore cached sound state (but never skip brief population)
     if (cachedSound && cachedSound.projectId === projectId) {
       setSound(cachedSound)
       if (cachedSound.approvedVariationId) setApproved(true)
+      // If already generated, go straight to selection
       if (cachedSound.status === 'ready') {
+        // Still populate brief fields so "edit brief" works correctly
+        if (cachedScript) {
+          setScript(cachedScript)
+          setTone(cachedScript.tone ?? '')
+          setMood(cachedScript.tone ?? '')
+          setNarrativeArc(cachedScript.narrative_arc ?? '')
+          setVisualStyle(cachedScript.visual_style ?? '')
+          setGenre(cachedScript.genre ?? '')
+        }
         setPageState('selection')
         return
       }
     }
 
-    // Populate brief from script
+    // Populate brief from script (session or API fallback)
     if (cachedScript) {
       setScript(cachedScript)
       setTone(cachedScript.tone ?? '')
-      setMood(cachedScript.tone ?? '')          // derive mood from tone as starting point
+      setMood(cachedScript.tone ?? '')
       setNarrativeArc(cachedScript.narrative_arc ?? '')
       setVisualStyle(cachedScript.visual_style ?? '')
       setGenre(cachedScript.genre ?? '')
+      setPageState('brief')
+    } else {
+      // No script in session — fetch project from API for title at minimum,
+      // then prompt the user to navigate back through the workflow
+      fetch(`/api/projects/${projectId}`)
+        .then(r => r.json())
+        .then(({ project }) => {
+          if (project?.title) {
+            setScript({ title: project.title } as ScriptDocument)
+          }
+        })
+        .catch(() => {/* non-fatal */})
+        .finally(() => setPageState('brief'))
     }
-
-    setPageState('brief')
   }, [projectId])
 
   // ── Elapsed timer during generation ──────────────────────────────────────
@@ -456,6 +478,19 @@ export default function SoundPage() {
                 style={{ borderColor: 'rgba(204,68,68,0.2)', background: 'rgba(204,68,68,0.05)' }}>
                 <AlertCircle className="w-4 h-4 flex-none" style={{ color: 'var(--accent-red)' }} />
                 <p className="text-xs flex-1" style={{ color: 'var(--accent-red)' }}>{error}</p>
+              </div>
+            )}
+
+            {/* No script warning — session lost or cold load */}
+            {!tone && !narrativeArc && !visualStyle && (
+              <div className="mb-8 rounded border px-4 py-3 flex items-center justify-between gap-4"
+                style={{ borderColor: 'rgba(170,136,68,0.2)', background: 'rgba(170,136,68,0.04)' }}>
+                <p className="text-xs font-light" style={{ color: 'var(--accent-warm)' }}>
+                  Script data not found in this session. Fields have been left blank — fill them in manually, or go back through the workflow to auto-populate.
+                </p>
+                <Button variant="secondary" size="sm" onClick={() => router.push('/script')}>
+                  <ArrowLeft className="w-3 h-3" /> Back to Script
+                </Button>
               </div>
             )}
 
