@@ -2,12 +2,15 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useRouter, useParams, useSearchParams } from 'next/navigation'
+import { Check, Loader2, ArrowUp, RefreshCw, ArrowLeft, ArrowRight } from 'lucide-react'
 import { StoryboardResult, StoryboardShot } from '@/lib/types'
 import { Sprocket, TopBar } from '@/components/shell/Shell'
 import { generateScript, generateStoryboard, buildPrompt, createProject, upscaleStoryboard } from '@/lib/argon-browser'
 import { pipelineState, PipelineStep } from '@/lib/pipeline-state'
 import StoryboardWaiting from '@/components/StoryboardWaiting'
 import { isUpscaledAll } from '@/lib/types'
+import Button from '@/components/ui/Button'
+import WorkflowStepper from '@/components/WorkflowStepper'
 
 type PageState = 'loading' | 'building' | 'ready' | 'error'
 type UpscaleState = 'idle' | 'upscaling' | 'done' | 'error'
@@ -41,8 +44,8 @@ function ShotCard({ shotKey, shot }: { shotKey: string; shot: StoryboardShot }) 
       style={{ borderColor: 'var(--border-standard)', background: 'var(--surface-1)' }}
       onMouseEnter={e => {
         e.currentTarget.style.borderColor = 'var(--border-emphasis)'
-        e.currentTarget.style.boxShadow = '0 4px 24px rgba(170,136,68,0.08)'
-        e.currentTarget.style.transform = 'translateY(-1px)'
+        e.currentTarget.style.boxShadow = '0 8px 32px rgba(170,136,68,0.12)'
+        e.currentTarget.style.transform = 'translateY(-3px)'
       }}
       onMouseLeave={e => {
         e.currentTarget.style.borderColor = 'var(--border-standard)'
@@ -71,8 +74,8 @@ function ShotCard({ shotKey, shot }: { shotKey: string; shot: StoryboardShot }) 
         ) : (
           <div className="absolute inset-0 shimmer" />
         )}
-        <div className="absolute top-3 left-3 z-20 px-1.5 py-0.5 rounded text-[10px] font-slate"
-          style={{ background: 'rgba(0,0,0,0.75)', color: 'var(--text-tertiary)' }}>
+        <div className="absolute top-3 left-3 z-20 px-1.5 py-0.5 rounded text-[10px] font-slate border"
+          style={{ background: 'rgba(0,0,0,0.75)', color: 'var(--accent-amber)', borderColor: 'rgba(170,136,68,0.3)' }}>
           {shotKey}
         </div>
         {sd?.duration && (
@@ -332,63 +335,51 @@ export default function StoryboardPage() {
         rightAction={
           <div className="flex items-center gap-2">
             {/* Upscale button */}
-            <button
+            <Button
+              variant={upscaleState === 'done' ? 'success' : upscaleState === 'error' ? 'error' : 'secondary'}
+              size="sm"
               onClick={handleUpscale}
               disabled={upscaleState === 'upscaling' || upscaleState === 'done'}
               title={upscaleState === 'done' ? 'All frames are already upscaled to 2K' : 'Upscale all frames to 2K'}
-              className="px-5 py-2 text-xs tracking-[0.2em] uppercase border transition-all duration-200 disabled:cursor-not-allowed flex items-center gap-2"
-              style={{
-                borderColor: upscaleState === 'done' ? 'var(--accent-green)' : upscaleState === 'error' ? 'rgba(204,68,68,0.4)' : 'var(--border-standard)',
-                color: upscaleState === 'done' ? 'var(--accent-green)' : upscaleState === 'error' ? 'var(--accent-red)' : 'var(--text-tertiary)',
-                opacity: upscaleState === 'upscaling' ? 0.6 : 1,
-                borderRadius: 2,
-              }}
-              onMouseEnter={e => {
-                if (upscaleState === 'idle') {
-                  e.currentTarget.style.borderColor = 'var(--border-emphasis)'
-                  e.currentTarget.style.color = 'var(--text-secondary)'
-                }
-              }}
-              onMouseLeave={e => {
-                if (upscaleState === 'idle') {
-                  e.currentTarget.style.borderColor = 'var(--border-standard)'
-                  e.currentTarget.style.color = 'var(--text-tertiary)'
-                }
-              }}
+              style={{ opacity: upscaleState === 'upscaling' ? 0.6 : 1 }}
             >
-              {upscaleState === 'upscaling' && (
-                <span
-                  className="inline-block rounded-full border-t animate-spin"
-                  style={{ width: 10, height: 10, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.2)', borderTopColor: 'var(--text-tertiary)' }}
-                />
-              )}
-              {upscaleState === 'done'      && '✓ Upscaled 2K'}
-              {upscaleState === 'upscaling' && 'Upscaling…'}
-              {upscaleState === 'idle'      && '↑ Upscale 2K'}
-              {upscaleState === 'error'     && '↑ Retry Upscale'}
-            </button>
+              {upscaleState === 'upscaling' && <Loader2 className="w-3 h-3 animate-spin" />}
+              {upscaleState === 'done'      && <><Check className="w-3 h-3" /> Upscaled 2K</>}
+              {upscaleState === 'upscaling' && <>Upscaling</>}
+              {upscaleState === 'idle'      && <><ArrowUp className="w-3 h-3" /> Upscale 2K</>}
+              {upscaleState === 'error'     && <><ArrowUp className="w-3 h-3" /> Retry Upscale</>}
+            </Button>
 
             {/* Regenerate button */}
-            <button
-              onClick={handleRegenerate}
-              className="px-5 py-2 text-xs tracking-[0.2em] uppercase border transition-all duration-200"
-              style={{ borderColor: 'var(--border-standard)', color: 'var(--text-tertiary)', borderRadius: 2 }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-emphasis)'; e.currentTarget.style.color = 'var(--text-secondary)' }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-standard)'; e.currentTarget.style.color = 'var(--text-tertiary)' }}
-            >
-              ↺ Regenerate
-            </button>
+            <Button variant="secondary" size="sm" onClick={handleRegenerate}>
+              <RefreshCw className="w-3 h-3" /> Regenerate
+            </Button>
           </div>
         }
       />
+
+      <WorkflowStepper current="storyboard" projectId={projectId} />
 
       {/* Grid */}
       <div className="flex-1 overflow-y-auto w-full">
         <div style={{ width: MAX_W, margin: '0 auto', paddingTop: 32, paddingBottom: 32 }}>
           <div className="grid gap-6" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
-            {shotKeys.map(key => (
-              <ShotCard key={key} shotKey={key} shot={storyboard.shots[key]} />
-            ))}
+            {shotKeys.flatMap((key, i) => {
+              const scene = Number(key.split('.')[0])
+              const prevScene = i > 0 ? Number(shotKeys[i - 1].split('.')[0]) : 0
+              if (scene !== prevScene) {
+                return [
+                  <div key={`scene-${scene}`} className="col-span-3 flex items-center gap-4 pt-4">
+                    <span className="text-[10px] tracking-[0.3em] uppercase font-slate" style={{ color: 'var(--accent-amber)' }}>
+                      Scene {scene}
+                    </span>
+                    <div className="flex-1 h-px" style={{ background: 'var(--border-subtle)' }} />
+                  </div>,
+                  <ShotCard key={key} shotKey={key} shot={storyboard.shots[key]} />,
+                ]
+              }
+              return [<ShotCard key={key} shotKey={key} shot={storyboard.shots[key]} />]
+            })}
           </div>
         </div>
       </div>
@@ -397,26 +388,21 @@ export default function StoryboardPage() {
       <div className="flex-none w-full border-t" style={{ borderColor: 'var(--border-subtle)', background: 'var(--surface-1)' }}>
         <div className="flex items-center justify-between py-4" style={{ width: MAX_W, margin: '0 auto' }}>
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => router.push('/')}
-              className="text-xs tracking-[0.2em] uppercase border px-4 py-2 transition-all duration-200"
-              style={{ borderColor: 'var(--border-standard)', color: 'var(--text-tertiary)', borderRadius: 2 }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-emphasis)'; e.currentTarget.style.color = 'var(--text-secondary)' }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-standard)'; e.currentTarget.style.color = 'var(--text-tertiary)' }}
-            >
-              ← Projects
-            </button>
-            <button
-              onClick={() => router.push('/script')}
-              className="text-xs tracking-[0.2em] uppercase border px-4 py-2 transition-all duration-200"
-              style={{ borderColor: 'var(--border-standard)', color: 'var(--text-tertiary)', borderRadius: 2 }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-emphasis)'; e.currentTarget.style.color = 'var(--text-secondary)' }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-standard)'; e.currentTarget.style.color = 'var(--text-tertiary)' }}
-            >
+            <Button variant="secondary" size="sm" onClick={() => router.push('/')}>
+              <ArrowLeft className="w-3 h-3" /> Projects
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => router.push('/script')}>
               View Script
-            </button>
+            </Button>
           </div>
-          <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>Powered by Runway</p>
+          <Button
+            variant="primary"
+            size="md"
+            onClick={() => router.push(`/video/${projectId}`)}
+            className="group gap-2"
+          >
+            Generate Video <ArrowRight className="w-3 h-3 transition-transform duration-200 group-hover:translate-x-1" />
+          </Button>
         </div>
       </div>
     </main>

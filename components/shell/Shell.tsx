@@ -35,12 +35,12 @@ function SprocketEdge() {
         <div
           key={i}
           className="absolute left-[14px] rounded-full"
-          style={{
-            top: `${12 + i * 56}px`,
-            width: 2,
-            height: 2,
-            background: 'var(--border-subtle)',
-          }}
+            style={{
+              top: `${12 + i * 56}px`,
+              width: 3,
+              height: 3,
+              background: 'var(--border-subtle)',
+            }}
         />
       ))}
     </div>
@@ -72,6 +72,8 @@ function Breadcrumb({ steps }: { steps: BreadcrumbStep[] }) {
               className="text-xs tracking-[0.2em] uppercase"
               style={{
                 color: step.current ? 'var(--accent-amber)' : 'var(--text-tertiary)',
+                borderBottom: step.current ? '1px solid var(--accent-amber)' : 'none',
+                paddingBottom: step.current ? '2px' : '0',
               }}
             >
               {step.label}
@@ -232,12 +234,12 @@ export function Sprocket({ noSprocket = false }: { noSprocket?: boolean }) {
         <div
           key={i}
           className="absolute left-[14px] rounded-full"
-          style={{
-            top: `${12 + i * 56}px`,
-            width: 2,
-            height: 2,
-            background: 'var(--border-subtle)',
-          }}
+            style={{
+              top: `${12 + i * 56}px`,
+              width: 3,
+              height: 3,
+              background: 'var(--border-subtle)',
+            }}
         />
       ))}
     </div>

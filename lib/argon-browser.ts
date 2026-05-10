@@ -3,7 +3,7 @@
  * Calls Argon directly from the browser — token is intentionally public for now.
  * CORS is open (*) on the Argon server so direct calls are viable.
  */
-import type { ScriptDocument, StoryboardResult } from './types'
+import type { ScriptDocument, StoryboardResult, VideoResult, SoundResult } from './types'
 
 const BASE_URL   = process.env.NEXT_PUBLIC_ARGON_BASE_URL!
 const AUTH_TOKEN = process.env.NEXT_PUBLIC_ARGON_AUTH_TOKEN!
@@ -117,4 +117,48 @@ export async function generateStoryboard(projectId: string): Promise<StoryboardR
     shots: storyboard.shots,
     activeGrid: storyboard.active_grid,
   }
+}
+
+// ─── Step 4: POST /api/video/generate (stub → will call Argon when ready) ─────
+
+export async function generateVideo(projectId: string, shots: StoryboardResult['shots']): Promise<VideoResult> {
+  const res = await fetch('/api/video/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ projectId, shots }),
+  })
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error(`Failed to generate video (${res.status}): ${err}`)
+  }
+  const data = await res.json()
+  return data.video
+}
+
+// ─── Step 5: POST /api/sound/mix (stub → will call Argon when ready) ─────────
+
+export async function mixSound(projectId: string, trackId: string): Promise<SoundResult> {
+  const res = await fetch('/api/sound/mix', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ projectId, trackId }),
+  })
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error(`Failed to mix sound (${res.status}): ${err}`)
+  }
+  const data = await res.json()
+  return data.sound
+}
+
+// ─── GET /api/sound/tracks ──────────────────────────────────────────────────
+
+export async function getSoundTracks(): Promise<SoundResult['track'][]> {
+  const res = await fetch('/api/sound/tracks')
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error(`Failed to fetch tracks (${res.status}): ${err}`)
+  }
+  const data = await res.json()
+  return data.tracks
 }

@@ -1,7 +1,9 @@
 'use client'
 
+import { Check, Loader2, ArrowLeft } from 'lucide-react'
 import { ScriptDocument } from '@/lib/types'
 import { PipelineStep } from '@/lib/pipeline-state'
+import Button from '@/components/ui/Button'
 
 interface StoryboardWaitingProps {
   script: ScriptDocument
@@ -15,9 +17,11 @@ const STEPS: { key: PipelineStep; label: string }[] = [
   { key: 'project',    label: 'Project created'      },
   { key: 'script',     label: 'Structuring script'   },
   { key: 'storyboard', label: 'Rendering frames'     },
+  { key: 'video',      label: 'Generating video'     },
+  { key: 'sound',      label: 'Mixing sound'         },
 ]
 
-const STEP_ORDER: PipelineStep[] = ['project', 'script', 'storyboard', 'done']
+const STEP_ORDER: PipelineStep[] = ['project', 'script', 'storyboard', 'video', 'sound', 'done']
 
 function stepIndex(step: PipelineStep): number {
   return STEP_ORDER.indexOf(step)
@@ -129,7 +133,7 @@ export default function StoryboardWaiting({
                 }}
               >
                 {label}
-                {isDone ? ' ✓' : isActive ? '…' : ''}
+                {isDone ? <Check className="w-3 h-3 inline" /> : isActive ? <Loader2 className="w-3 h-3 inline animate-spin" /> : null}
               </p>
             </div>
           )
@@ -145,15 +149,9 @@ export default function StoryboardWaiting({
       {error && (
         <div className="flex flex-col items-center gap-3 text-center" style={{ maxWidth: 360 }}>
           <p className="text-xs" style={{ color: 'var(--accent-red)' }}>{error}</p>
-          <button
-            onClick={onStartOver}
-            className="text-xs tracking-[0.2em] uppercase transition-colors"
-            style={{ color: 'var(--text-tertiary)' }}
-            onMouseEnter={e => { e.currentTarget.style.color = 'var(--text-secondary)' }}
-            onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-tertiary)' }}
-          >
-            ← Start over
-          </button>
+          <Button variant="tertiary" size="sm" onClick={onStartOver}>
+            <ArrowLeft className="w-3 h-3 inline" /> Start over
+          </Button>
         </div>
       )}
 

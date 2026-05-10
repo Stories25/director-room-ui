@@ -1,6 +1,7 @@
 'use client'
 
 import { StoryExtraction } from './StoryPanel'
+import Button from '@/components/ui/Button'
 
 interface ConfirmEndModalProps {
   extraction: StoryExtraction
@@ -83,24 +84,12 @@ export default function ConfirmEndModal({ extraction, onConfirm, onCancel }: Con
 
         {/* Actions */}
         <div className="flex gap-3 pt-1">
-          <button
-            onClick={onCancel}
-            className="flex-1 border py-2.5 text-xs tracking-[0.2em] uppercase transition-all duration-150"
-            style={{ borderColor: 'var(--border-standard)', color: 'var(--text-tertiary)', borderRadius: 2 }}
-            onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--border-emphasis)'; e.currentTarget.style.color = 'var(--text-secondary)' }}
-            onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border-standard)'; e.currentTarget.style.color = 'var(--text-tertiary)' }}
-          >
+          <Button variant="secondary" size="sm" onClick={onCancel} className="flex-1">
             Keep going
-          </button>
-          <button
-            onClick={onConfirm}
-            className="flex-1 py-2.5 text-xs font-medium tracking-[0.2em] uppercase transition-all duration-150"
-            style={{ background: 'var(--text-primary)', color: 'var(--text-inverse)', borderRadius: 2 }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = '#fff' }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--text-primary)' }}
-          >
+          </Button>
+          <Button variant="primary" size="sm" onClick={onConfirm} className="flex-1">
             Generate Script
-          </button>
+          </Button>
         </div>
       </div>
     </div>

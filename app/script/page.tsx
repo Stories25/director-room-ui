@@ -2,11 +2,14 @@
 
 import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
+import { ArrowRight, ArrowLeft, Loader2 } from 'lucide-react'
 import ScriptDocumentView from '@/components/ScriptDocument'
 import { ScriptDocument } from '@/lib/types'
 import { Sprocket, TopBar } from '@/components/shell/Shell'
 import { buildPrompt, createProject } from '@/lib/argon-browser'
 import { pipelineState } from '@/lib/pipeline-state'
+import Button from '@/components/ui/Button'
+import WorkflowStepper from '@/components/WorkflowStepper'
 
 type PageState = 'loading' | 'review' | 'creating' | 'error'
 
@@ -58,6 +61,8 @@ export default function ScriptPage() {
         ]}
       />
 
+      <WorkflowStepper current="script" />
+
       {/* Scrollable document */}
       <div className="flex-1 overflow-y-auto w-full">
         <div style={{ width: 720, margin: '0 auto', padding: '40px 0 120px 0' }}>
@@ -66,48 +71,42 @@ export default function ScriptPage() {
             <div className="mb-8 rounded border px-4 py-3 space-y-2"
               style={{ borderColor: 'rgba(204,68,68,0.2)', background: 'rgba(204,68,68,0.05)' }}>
               <p className="text-xs" style={{ color: 'var(--accent-red)' }}>{error}</p>
-              <button
-                onClick={handleSend}
-                className="text-xs tracking-[0.2em] uppercase transition-colors"
-                style={{ color: 'var(--text-tertiary)' }}
-                onMouseEnter={e => { e.currentTarget.style.color = 'var(--text-secondary)' }}
-                onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-tertiary)' }}
-              >
-                Retry →
-              </button>
+              <Button variant="tertiary" size="sm" onClick={handleSend}>
+                Retry <ArrowRight className="w-3 h-3 inline-block" />
+              </Button>
             </div>
           )}
 
-          <ScriptDocumentView script={script} onChange={setScript} />
+          <div className="fade-up">
+            <ScriptDocumentView script={script} onChange={setScript} />
+          </div>
         </div>
       </div>
 
       {/* Bottom action bar */}
       <div className="flex-none w-full border-t" style={{ borderColor: 'var(--border-subtle)', background: 'var(--surface-1)' }}>
         <div className="flex items-center justify-between py-5" style={{ width: 720, margin: '0 auto' }}>
-          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-            All fields are editable before sending.
-          </p>
-          <button
+          <Button variant="secondary" size="sm" onClick={() => router.push('/room')}>
+            <ArrowLeft className="w-3 h-3" /> Story
+          </Button>
+          <Button
+            variant="primary"
+            size="md"
             onClick={handleSend}
             disabled={pageState === 'creating'}
-            className="px-8 py-3 text-sm font-medium tracking-[0.2em] uppercase transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-3"
-            style={{ background: 'var(--text-primary)', color: 'var(--text-inverse)', borderRadius: 2 }}
-            onMouseEnter={e => { if (pageState !== 'creating') e.currentTarget.style.background = '#fff' }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'var(--text-primary)' }}
+            className="group gap-3"
           >
             {pageState === 'creating' ? (
               <>
-                <span
-                  className="inline-block h-3 w-3 rounded-full border-t animate-spin"
-                  style={{ borderColor: 'rgba(255,255,255,0.3)', borderTopColor: '#fff' }}
-                />
-                Creating project…
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Creating project
               </>
             ) : (
-              'Build Storyboard →'
+              <span className="flex items-center gap-2">
+                Build Storyboard <ArrowRight className="w-3 h-3 inline-block transition-transform duration-200 group-hover:translate-x-1" />
+              </span>
             )}
-          </button>
+          </Button>
         </div>
       </div>
     </main>

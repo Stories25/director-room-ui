@@ -92,6 +92,46 @@ export interface StoryboardResult {
   activeGrid: number
 }
 
+// ─── Video types ────────────────────────────────────────────────────────────
+
+export type VideoClipStatus = 'pending' | 'generating' | 'ready' | 'error'
+
+export interface VideoClip {
+  shotKey: string
+  duration: number // seconds
+  status: VideoClipStatus
+  url?: string
+  prompt: string
+  thumbnailUrl?: string
+}
+
+export interface VideoResult {
+  projectId: string
+  clips: VideoClip[]
+  totalDuration: number
+  status: VideoClipStatus
+  compiledUrl?: string
+}
+
+// ─── Sound types ────────────────────────────────────────────────────────────
+
+export type SoundTrackMood = 'epic' | 'tense' | 'melancholic' | 'uplifting' | 'mysterious' | 'romantic' | 'minimal'
+
+export interface SoundTrack {
+  id: string
+  name: string
+  mood: SoundTrackMood
+  duration: number
+  url?: string
+}
+
+export interface SoundResult {
+  projectId: string
+  videoUrl?: string
+  track?: SoundTrack
+  status: 'pending' | 'mixing' | 'ready' | 'error'
+}
+
 /**
  * Derive whether every shot has been upscaled by checking the active generation
  * for each shot. Returns false if there are no shots.

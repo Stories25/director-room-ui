@@ -1,4 +1,4 @@
-import type { ScriptDocument, StoryboardResult } from './types'
+import type { ScriptDocument, StoryboardResult, VideoResult, SoundResult } from './types'
 
 const BASE_URL  = process.env.ARGON_BASE_URL!
 const AUTH_TOKEN = process.env.ARGON_AUTH_TOKEN!
@@ -148,4 +148,37 @@ export async function generateStoryboard(projectId: string): Promise<StoryboardR
     shots: storyboard.shots,
     activeGrid: storyboard.active_grid,
   }
+}
+
+// ─── Step 4: Video generation (stub) ────────────────────────────────────────
+
+export async function generateVideo(projectId: string): Promise<VideoResult> {
+  // TODO: wire to Argon backend when API is ready
+  const res = await fetch(`${BASE_URL}/runway/projects/${projectId}/video`, {
+    method: 'POST',
+    headers: headers(),
+  })
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error(`generateVideo failed (${res.status}): ${err}`)
+  }
+  const data = await res.json()
+  return data?.data?.video ?? data?.video
+}
+
+// ─── Step 5: Sound mixing (stub) ────────────────────────────────────────────
+
+export async function mixSound(projectId: string, trackId: string): Promise<SoundResult> {
+  // TODO: wire to Argon backend when API is ready
+  const res = await fetch(`${BASE_URL}/runway/projects/${projectId}/sound`, {
+    method: 'POST',
+    headers: headers(),
+    body: JSON.stringify({ track_id: trackId }),
+  })
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error(`mixSound failed (${res.status}): ${err}`)
+  }
+  const data = await res.json()
+  return data?.data?.sound ?? data?.sound
 }

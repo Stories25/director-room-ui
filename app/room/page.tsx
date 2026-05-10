@@ -3,13 +3,16 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
+import { Check, ArrowRight } from 'lucide-react'
 import TranscriptPanel from '@/components/TranscriptPanel'
 import StoryPanel, { StoryExtraction } from '@/components/StoryPanel'
 import WaveformIndicator from '@/components/WaveformIndicator'
 import SessionTimer from '@/components/SessionTimer'
 import ConfirmEndModal from '@/components/ConfirmEndModal'
 import { SessionCredentials, TranscriptEntry } from '@/lib/types'
-import { Sprocket } from '@/components/shell/Shell'
+import { Sprocket, TopBar } from '@/components/shell/Shell'
+import Button from '@/components/ui/Button'
+import WorkflowStepper from '@/components/WorkflowStepper'
 
 const AvatarView = dynamic(() => import('@/components/AvatarView'), { ssr: false })
 
@@ -185,11 +188,11 @@ export default function RoomPage() {
                     style={{ background: done ? 'var(--accent-green)' : active ? 'var(--text-tertiary)' : 'var(--text-muted)' }}
                   />
                   <p
-                    className="text-xs transition-colors duration-500 font-slate"
+                    className={`text-xs transition-colors duration-500 ${active ? 'font-display' : 'font-slate'}`}
                     style={{ color: done ? 'var(--text-tertiary)' : active ? 'var(--text-secondary)' : 'var(--text-muted)' }}
                   >
                     {step.label}
-                    {done && <span style={{ color: 'var(--accent-green)' }}> ✓</span>}
+                    {done && <Check className="w-3 h-3 inline" style={{ color: 'var(--accent-green)' }} />}
                   </p>
                 </div>
               )
@@ -218,15 +221,9 @@ export default function RoomPage() {
           <p className="text-sm font-light max-w-sm text-center" style={{ color: 'var(--text-muted)' }}>
             {error}
           </p>
-          <button
-            onClick={() => window.location.reload()}
-            className="px-8 py-2.5 text-sm font-medium tracking-[0.2em] uppercase"
-            style={{ background: 'var(--text-primary)', color: 'var(--text-inverse)', borderRadius: 2 }}
-            onMouseEnter={e => { e.currentTarget.style.background = '#fff' }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'var(--text-primary)' }}
-          >
+          <Button variant="primary" size="md" onClick={() => window.location.reload()}>
             Try Again
-          </button>
+          </Button>
         </div>
       )}
 
@@ -252,9 +249,15 @@ export default function RoomPage() {
 
       {/* ── Main layout ── */}
       {(pageState === 'connected' || pageState === 'confirming' || pageState === 'finishing') && credentials && (
-        <>
-          {/* Left: Avatar (60%) with viewfinder brackets */}
-          <div className="relative flex-[0_0_60%] h-full overflow-hidden">
+        <div className="flex flex-col h-full w-full overflow-hidden">
+          <TopBar
+            breadcrumb={[{ label: 'Story', current: true }]}
+          />
+          <WorkflowStepper current="story" />
+
+          <div className="flex-1 flex overflow-hidden">
+            {/* Left: Avatar (60%) with viewfinder brackets */}
+            <div className="relative flex-[0_0_60%] h-full overflow-hidden">
             <AvatarView
               credentials={credentials}
               onTranscriptUpdate={handleTranscriptUpdate}
@@ -288,7 +291,7 @@ export default function RoomPage() {
 
             {/* Time warning banners */}
             {timeWarning === 'warning' && (
-              <div className="absolute bottom-24 left-0 right-0 flex justify-center z-10">
+              <div className="absolute bottom-24 left-0 right-0 flex justify-center z-10 slide-up">
                 <div className="px-4 py-2 rounded text-xs"
                   style={{ background: 'rgba(20,15,5,0.9)', border: '1px solid var(--accent-warm)', color: 'var(--accent-warm)' }}>
                   About 1 minute remaining — start wrapping up
@@ -296,7 +299,7 @@ export default function RoomPage() {
               </div>
             )}
             {timeWarning === 'critical' && (
-              <div className="absolute bottom-24 left-0 right-0 flex justify-center z-10">
+              <div className="absolute bottom-24 left-0 right-0 flex justify-center z-10 slide-up">
                 <div className="px-4 py-2 rounded text-xs timer-flash"
                   style={{ background: 'rgba(20,5,5,0.9)', border: '1px solid var(--accent-red)', color: 'var(--accent-red)' }}>
                   30 seconds remaining — finish soon
@@ -354,18 +357,18 @@ export default function RoomPage() {
               isSpeaking={isSpeaking}
             />
 
-            <button
+            <Button
+              variant="primary"
+              size="md"
               onClick={handleFinishClick}
               disabled={pageState !== 'connected'}
-              className="px-7 py-2.5 text-sm font-medium tracking-[0.2em] uppercase transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
-              style={{ background: 'var(--text-primary)', color: 'var(--text-inverse)', borderRadius: 2 }}
-              onMouseEnter={e => { if (pageState === 'connected') e.currentTarget.style.background = '#fff' }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'var(--text-primary)' }}
+              className="group"
             >
-              Finish &amp; Generate Script
-            </button>
+              Finish &amp; Generate Script <ArrowRight className="w-3 h-3 inline-block transition-transform duration-200 group-hover:translate-x-1" />
+            </Button>
           </div>
-        </>
+        </div>
+      </div>
       )}
 
       {/* Runway attribution */}

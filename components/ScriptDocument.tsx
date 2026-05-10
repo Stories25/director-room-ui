@@ -269,8 +269,8 @@ export default function ScriptDocumentView({ script, onChange }: ScriptDocumentP
           <Editable
             value={script.title}
             onChange={v => update({ title: v })}
-            className="text-2xl font-light tracking-tight"
-            style={{ color: 'var(--text-primary)', letterSpacing: '-0.01em' }}
+            className="text-2xl font-display font-light"
+            style={{ color: 'var(--text-primary)' }}
           />
         </div>
 

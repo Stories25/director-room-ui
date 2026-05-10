@@ -1,6 +1,6 @@
 import { ScriptDocument } from './types'
 
-export type PipelineStep = 'project' | 'script' | 'storyboard' | 'done'
+export type PipelineStep = 'project' | 'script' | 'storyboard' | 'video' | 'sound' | 'done'
 
 export interface PipelineState {
   projectId: string

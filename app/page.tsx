@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { ArrowRight } from 'lucide-react'
 import type { ProjectListItem } from '@/lib/argon'
 import { Sprocket, TopBar, MAX_W } from '@/components/shell/Shell'
+import Button from '@/components/ui/Button'
 
 type ViewState = 'loading' | 'ready' | 'empty' | 'error'
 
@@ -67,10 +69,10 @@ function ProjectCard({ project, onClick }: { project: ProjectListItem; onClick: 
               style={{ background: 'rgba(8,8,8,0.55)' }}
             >
               <span
-                className="px-6 py-2.5 text-[10px] tracking-[0.2em] uppercase border"
+                className="inline-flex items-center gap-2 px-6 py-2.5 text-[10px] tracking-[0.2em] uppercase border"
                 style={{ borderColor: 'var(--border-emphasis)', color: 'var(--text-primary)', borderRadius: 2 }}
               >
-                Open Storyboard →
+                Open Storyboard <ArrowRight className="w-3 h-3 inline-block" />
               </span>
             </div>
           </>
@@ -130,26 +132,9 @@ function ProjectCard({ project, onClick }: { project: ProjectListItem; onClick: 
 
 function NewSessionButton({ onClick }: { onClick: () => void }) {
   return (
-    <button
-      onClick={onClick}
-      className="px-5 py-2 text-xs tracking-[0.2em] uppercase border transition-all duration-200"
-      style={{
-        borderColor: 'var(--border-standard)',
-        color: 'var(--text-secondary)',
-        background: 'var(--surface-1)',
-        borderRadius: 2,
-      }}
-      onMouseEnter={e => {
-        e.currentTarget.style.borderColor = 'var(--border-emphasis)'
-        e.currentTarget.style.color = 'var(--text-primary)'
-      }}
-      onMouseLeave={e => {
-        e.currentTarget.style.borderColor = 'var(--border-standard)'
-        e.currentTarget.style.color = 'var(--text-secondary)'
-      }}
-    >
+    <Button variant="secondary" size="sm" onClick={onClick}>
       New Session
-    </button>
+    </Button>
   )
 }
 
@@ -217,15 +202,9 @@ export default function LandingPage() {
                 Something went wrong
               </p>
               <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{error}</p>
-              <button
-                onClick={() => window.location.reload()}
-                className="px-6 py-2 text-xs tracking-[0.2em] uppercase border transition-all duration-200"
-                style={{ borderColor: 'var(--border-standard)', color: 'var(--text-tertiary)', borderRadius: 2 }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-emphasis)'; e.currentTarget.style.color = 'var(--text-secondary)' }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-standard)'; e.currentTarget.style.color = 'var(--text-tertiary)' }}
-              >
+              <Button variant="secondary" size="sm" onClick={() => window.location.reload()}>
                 Retry
-              </button>
+              </Button>
             </div>
           )}
 
@@ -238,28 +217,61 @@ export default function LandingPage() {
                   background: 'radial-gradient(ellipse 60% 50% at 50% 60%, rgba(255,255,255,0.03) 0%, transparent 70%)',
                 }}
               />
-              <div className="relative z-10 flex flex-col items-center gap-8 text-center">
+              <div className="relative z-10 flex flex-col items-center gap-8 text-center stagger-children">
                 <p className="text-xs tracking-[0.3em] uppercase" style={{ color: 'var(--text-muted)' }}>
                   Director&apos;s Room
                 </p>
+                <div className="h-px w-12" style={{ background: 'var(--accent-amber)' }} />
                 <h1
-                  className="text-6xl font-light leading-none tracking-tight"
-                  style={{ color: 'var(--text-primary)', letterSpacing: '-0.02em' }}
+                  className="text-6xl font-display font-light leading-none"
+                  style={{ color: 'var(--text-primary)' }}
                 >
                   Tell your story.
                 </h1>
                 <p className="text-base font-light" style={{ color: 'var(--text-tertiary)' }}>
                   Your story writer is waiting.
                 </p>
-                <button
+                <Button
+                  variant="primary"
+                  size="lg"
                   onClick={() => router.push('/room')}
-                  className="mt-4 cursor-pointer border px-10 py-3 text-sm font-light tracking-[0.2em] uppercase transition-all duration-300"
-                  style={{ borderColor: 'var(--border-standard)', color: 'var(--text-secondary)', background: 'transparent', borderRadius: 2 }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-emphasis)'; e.currentTarget.style.color = 'var(--text-primary)' }}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-standard)'; e.currentTarget.style.color = 'var(--text-secondary)' }}
+                  className="mt-4"
                 >
                   Begin Session
-                </button>
+                </Button>
+
+                {/* Workflow preview */}
+                <div className="mt-12 flex items-center gap-4">
+                  {[
+                    { label: 'Story', desc: 'Talk to the writer' },
+                    { label: 'Script', desc: 'Edit the draft' },
+                    { label: 'Storyboard', desc: 'Frame the shots' },
+                    { label: 'Video', desc: 'Generate clips' },
+                    { label: 'Sound', desc: 'Add music' },
+                  ].map((step, i, arr) => (
+                    <div key={step.label} className="flex items-center gap-4">
+                      <div className="text-center space-y-1">
+                        <div
+                          className="w-8 h-8 rounded-full border flex items-center justify-center mx-auto"
+                          style={{ borderColor: 'var(--border-standard)' }}
+                        >
+                          <span className="text-[10px] font-slate" style={{ color: 'var(--text-muted)' }}>
+                            {i + 1}
+                          </span>
+                        </div>
+                        <p className="text-[10px] tracking-[0.15em] uppercase font-slate" style={{ color: 'var(--text-tertiary)' }}>
+                          {step.label}
+                        </p>
+                        <p className="text-[9px] font-slate" style={{ color: 'var(--text-muted)' }}>
+                          {step.desc}
+                        </p>
+                      </div>
+                      {i < arr.length - 1 && (
+                        <div className="w-4 h-px mt-[-16px]" style={{ background: 'var(--border-subtle)' }} />
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           )}
