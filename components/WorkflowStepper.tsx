@@ -41,7 +41,7 @@ export default function WorkflowStepper({ current, projectId }: WorkflowStepperP
             {i > 0 && (
               <div
                 className="w-6 h-px mx-1.5 transition-colors duration-300"
-                style={{ background: isCompleted ? 'var(--accent-amber)' : 'var(--border-subtle)' }}
+                style={{ background: currentIdx >= i ? 'var(--accent-amber)' : 'var(--border-subtle)' }}
               />
             )}
 
