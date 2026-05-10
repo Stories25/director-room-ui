@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import type { ProjectListItem, ProjectDetail } from '@/lib/argon'
+import type { ProjectListItem } from '@/lib/argon'
 import { Sprocket, TopBar, MAX_W } from '@/components/shell/Shell'
 
 type ViewState = 'loading' | 'ready' | 'empty' | 'error'
@@ -21,68 +21,9 @@ function formatRelativeDate(iso: string): string {
   return then.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
-function getGridImageUrl(project: ProjectDetail): string | null {
-  if (!project.storyboard?.grids) return null
-  const keys = Object.keys(project.storyboard.grids)
-  if (keys.length === 0) return null
-  const sorted = keys.sort((a, b) => Number(b) - Number(a))
-  return project.storyboard.grids[sorted[0]]?.url ?? null
-}
-
-function getFirstShotUrl(project: ProjectDetail): string | null {
-  if (!project.storyboard?.shots) return null
-  const keys = Object.keys(project.storyboard.shots).sort()
-  if (keys.length === 0) return null
-  const shot = project.storyboard.shots[keys[0]]
-  const gens = shot?.image?.generations
-  if (!gens || gens.length === 0) return null
-  return gens[gens.length - 1]?.url ?? null
-}
-
-function getShotCount(project: ProjectDetail): number {
-  return project.storyboard?.shots ? Object.keys(project.storyboard.shots).length : 0
-}
-
-function getTotalDuration(project: ProjectDetail): string {
-  if (!project.storyboard?.shots) return '0s'
-  const shots = Object.values(project.storyboard.shots)
-  let total = 0
-  for (const s of shots) {
-    const d = s.script_data?.duration
-    if (d) {
-      const n = parseInt(d, 10)
-      if (!isNaN(n)) total += n
-    }
-  }
-  return `${total}s`
-}
-
 function ProjectCard({ project, onClick }: { project: ProjectListItem; onClick: () => void }) {
   const [imgLoaded, setImgLoaded] = useState(false)
-  const [detail, setDetail] = useState<ProjectDetail | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    async function loadDetail() {
-      try {
-        const res = await fetch(`/api/projects/${project.id}`)
-        if (!res.ok) return
-        const { project: p } = await res.json()
-        if (!cancelled) setDetail(p)
-      } catch {
-        // silently fail
-      }
-    }
-    loadDetail()
-    return () => { cancelled = true }
-  }, [project.id])
-
-  const gridUrl = detail ? getGridImageUrl(detail) : null
-  const fallbackUrl = !gridUrl && detail ? getFirstShotUrl(detail) : null
-  const imgSrc = gridUrl || fallbackUrl
-  const shotCount = detail ? getShotCount(detail) : 0
-  const totalDur = detail ? getTotalDuration(detail) : null
-  const hasImage = !!imgSrc
+  const hasImage = !!project.thumbnail_url
 
   return (
     <button
@@ -114,7 +55,7 @@ function ProjectCard({ project, onClick }: { project: ProjectListItem; onClick: 
             {!imgLoaded && <div className="absolute inset-0 shimmer z-0" />}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={imgSrc!}
+              src={project.thumbnail_url!}
               alt={project.title}
               className={`w-full h-full object-cover transition-opacity duration-500 ${imgLoaded ? 'opacity-100' : 'opacity-0'}`}
               onLoad={() => setImgLoaded(true)}
@@ -149,16 +90,6 @@ function ProjectCard({ project, onClick }: { project: ProjectListItem; onClick: 
                 No preview
               </p>
             </div>
-          </div>
-        )}
-
-        {/* Frame count badge */}
-        {shotCount > 0 && (
-          <div
-            className="absolute bottom-3 right-3 px-2 py-1 rounded font-slate text-[10px] z-20"
-            style={{ background: 'rgba(0,0,0,0.75)', color: 'var(--accent-amber)' }}
-          >
-            {shotCount} frames · {totalDur}
           </div>
         )}
       </div>

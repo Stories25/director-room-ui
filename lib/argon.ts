@@ -78,6 +78,7 @@ export interface ProjectListItem {
   title: string
   created_at: string
   updated_at: string
+  thumbnail_url: string | null
 }
 
 export interface ProjectDetail extends ProjectListItem {
