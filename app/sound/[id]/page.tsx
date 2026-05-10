@@ -97,26 +97,36 @@ function BriefField({
   multiline?: boolean
   placeholder?: string
 }) {
+  const isEmpty = !value.trim()
+
+  const sharedStyle: React.CSSProperties = {
+    color: isEmpty ? 'var(--text-muted)' : 'var(--text-primary)',
+    caretColor: 'var(--text-primary)',
+    fontStyle: isEmpty ? 'italic' : 'normal',
+    transition: 'border-color 0.15s, color 0.15s',
+    borderBottom: '1px solid var(--border-standard)',
+  }
+
   return (
-    <div className="space-y-2 py-6 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
-      <p className="text-[10px] tracking-[0.2em] uppercase font-slate" style={{ color: 'var(--text-muted)' }}>
+    <div className="py-7 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
+      {/* Label — small amber-tinted caps, clearly a label not content */}
+      <p
+        className="text-[10px] tracking-[0.2em] uppercase mb-3"
+        style={{ color: 'var(--accent-amber)', opacity: 0.7, fontFamily: 'var(--font-mono)' }}
+      >
         {label}
       </p>
+
       {multiline ? (
         <textarea
           value={value}
           onChange={e => onChange(e.target.value)}
           placeholder={placeholder}
-          rows={2}
-          className="w-full text-sm font-light leading-relaxed resize-none bg-transparent outline-none"
-          style={{
-            color: 'var(--text-secondary)',
-            caretColor: 'var(--text-primary)',
-            borderBottom: '1px solid transparent',
-            transition: 'border-color 0.15s',
-          }}
+          rows={value ? Math.max(2, value.split('\n').length) : 2}
+          className="brief-input w-full text-base font-light leading-relaxed resize-none bg-transparent outline-none"
+          style={sharedStyle}
           onFocus={e => (e.target.style.borderBottomColor = 'var(--accent-amber)')}
-          onBlur={e => (e.target.style.borderBottomColor = 'transparent')}
+          onBlur={e => (e.target.style.borderBottomColor = 'var(--border-standard)')}
         />
       ) : (
         <input
@@ -124,15 +134,10 @@ function BriefField({
           value={value}
           onChange={e => onChange(e.target.value)}
           placeholder={placeholder}
-          className="w-full text-sm font-light bg-transparent outline-none"
-          style={{
-            color: 'var(--text-secondary)',
-            caretColor: 'var(--text-primary)',
-            borderBottom: '1px solid transparent',
-            transition: 'border-color 0.15s',
-          }}
+          className="brief-input w-full text-base font-light bg-transparent outline-none"
+          style={sharedStyle}
           onFocus={e => (e.target.style.borderBottomColor = 'var(--accent-amber)')}
-          onBlur={e => (e.target.style.borderBottomColor = 'transparent')}
+          onBlur={e => (e.target.style.borderBottomColor = 'var(--border-standard)')}
         />
       )}
     </div>
@@ -523,15 +528,15 @@ export default function SoundPage() {
                 </div>
 
                 {/* Section label + amber rule */}
-                <div className="flex items-center gap-4 mb-1">
+                <div className="flex items-center gap-4 mb-2">
                   <p className="text-[10px] tracking-[0.25em] uppercase font-slate flex-none" style={{ color: 'var(--text-muted)' }}>
                     Soundtrack Brief
                   </p>
-                  <div className="flex-1 h-px" style={{ background: 'var(--accent-amber)', opacity: 0.3 }} />
-                  <p className="text-[10px] font-slate flex-none" style={{ color: 'var(--text-muted)' }}>
-                    Extracted from your script — edit any field
-                  </p>
+                  <div className="flex-1 h-px" style={{ background: 'var(--accent-amber)', opacity: 0.25 }} />
                 </div>
+                <p className="text-xs font-light mb-6" style={{ color: 'var(--text-muted)' }}>
+                  Extracted from your script — edit any field before generating.
+                </p>
 
                 {/* Fields — bare, no card wrapper */}
                 <BriefField
@@ -555,11 +560,14 @@ export default function SoundPage() {
                   placeholder="e.g. High contrast, noir, handheld"
                 />
 
-                {/* Additional direction — bare textarea, no box */}
-                <div className="py-6">
-                  <p className="text-[10px] tracking-[0.2em] uppercase font-slate mb-2" style={{ color: 'var(--text-muted)' }}>
-                    Additional direction
-                    <span className="ml-2 normal-case tracking-normal" style={{ color: 'var(--text-muted)', opacity: 0.6 }}>
+                {/* Additional direction */}
+                <div className="py-7">
+                  <p
+                    className="text-[10px] tracking-[0.2em] uppercase mb-3"
+                    style={{ color: 'var(--accent-amber)', opacity: 0.7, fontFamily: 'var(--font-mono)' }}
+                  >
+                    Additional direction{' '}
+                    <span style={{ opacity: 0.5, fontStyle: 'italic', textTransform: 'none', letterSpacing: 0 }}>
                       — optional
                     </span>
                   </p>
@@ -568,15 +576,16 @@ export default function SoundPage() {
                     onChange={e => setAdditionalDirection(e.target.value)}
                     placeholder={`e.g. "Sparse at the start, full orchestra at the climax — Hans Zimmer style"`}
                     rows={2}
-                    className="w-full text-sm font-light leading-relaxed resize-none bg-transparent outline-none"
+                    className="brief-input w-full text-base font-light leading-relaxed resize-none bg-transparent outline-none"
                     style={{
-                      color: 'var(--text-secondary)',
+                      color: additionalDirection ? 'var(--text-primary)' : 'var(--text-muted)',
+                      fontStyle: additionalDirection ? 'normal' : 'italic',
                       caretColor: 'var(--text-primary)',
-                      borderBottom: '1px solid transparent',
-                      transition: 'border-color 0.15s',
+                      borderBottom: '1px solid var(--border-standard)',
+                      transition: 'border-color 0.15s, color 0.15s',
                     }}
                     onFocus={e => (e.target.style.borderBottomColor = 'var(--accent-amber)')}
-                    onBlur={e => (e.target.style.borderBottomColor = 'transparent')}
+                    onBlur={e => (e.target.style.borderBottomColor = 'var(--border-standard)')}
                   />
                 </div>
 
