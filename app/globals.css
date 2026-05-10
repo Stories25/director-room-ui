@@ -87,6 +87,13 @@ body::after {
   color: var(--text-primary);
 }
 
+/* ── Brief field placeholder — muted, clearly not content ── */
+.brief-input::placeholder {
+  color: var(--text-muted);
+  font-style: italic;
+  opacity: 1;
+}
+
 /* ════════════════════════════════════════════
    TYPOGRAPHY UTILITIES
 ════════════════════════════════════════════ */
