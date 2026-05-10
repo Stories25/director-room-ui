@@ -1,4 +1,6 @@
 export type CharacterRole = 'protagonist' | 'antagonist' | 'supporting'
+export type ShotType = 'ECU' | 'CU' | 'MCU' | 'MS' | 'WS' | 'EWS' | 'POV' | 'INSERT'
+export type LocationType = 'INT' | 'EXT'
 
 export interface ScriptCharacter {
   name: string
@@ -6,12 +8,16 @@ export interface ScriptCharacter {
   description: string
 }
 
-export interface ScriptScene {
-  setting: string
+export interface Shot {
+  number: number
+  location_type: LocationType
+  location: string
   time_of_day: string
-  mood: string
+  shot_type: ShotType
+  duration_seconds: number
   action: string
-  dialogue_hints: string[]
+  dialogue?: string
+  direction?: string // camera/performance note
 }
 
 export interface ScriptDocument {
@@ -21,9 +27,17 @@ export interface ScriptDocument {
   tone: string
   duration: '30 seconds'
   characters: ScriptCharacter[]
-  scene: ScriptScene
+  shots: Shot[]
   visual_style: string
   narrative_arc: string
+  // Legacy field kept for backwards compat during transition
+  scene?: {
+    setting: string
+    time_of_day: string
+    mood: string
+    action: string
+    dialogue_hints: string[]
+  }
 }
 
 export interface TranscriptEntry {

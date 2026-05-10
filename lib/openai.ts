@@ -5,35 +5,48 @@ export const openai = new OpenAI({
   baseURL: process.env.OPENAI_BASE_URL || 'https://opencode.ai/zen/v1',
 })
 
-export const SCRIPT_FORMATTING_PROMPT = `You are a professional script analyst. You will receive a raw conversation transcript between an AI story writer named Hank and a film director. 
+export const SCRIPT_FORMATTING_PROMPT = `You are a professional script analyst and screenwriter. You will receive a raw conversation transcript between an AI story writer (Hank) and a film director.
 
-Your job is to extract and structure all the creative information into a precise JSON document for a 30-second teaser film.
+Your job: extract and structure all creative information into a precise JSON document for a 30-second teaser film, formatted as a real shooting script with individual shots.
 
-IMPORTANT: The output must be valid JSON only. No markdown, no explanation, no code blocks. Just the raw JSON object.
+IMPORTANT: Output valid JSON ONLY. No markdown, no code blocks, no explanation.
 
-Extract the following structure:
+Structure:
 {
-  "title": "A short evocative title for the teaser (infer from context if not stated)",
-  "logline": "1-2 sentence summary of what the 30-second teaser is about",
-  "genre": "The film genre (e.g. drama, thriller, noir, sci-fi)",
-  "tone": "The emotional tone (e.g. melancholic, tense, hopeful, gritty)",
+  "title": "Short evocative title for the teaser",
+  "logline": "1-2 sentence summary",
+  "genre": "film genre",
+  "tone": "emotional tone",
   "duration": "30 seconds",
   "characters": [
     {
-      "name": "Character name",
+      "name": "character name",
       "role": "protagonist | antagonist | supporting",
-      "description": "Brief physical/personality description"
+      "description": "brief physical and personality description"
     }
   ],
-  "scene": {
-    "setting": "Where the scene takes place",
-    "time_of_day": "morning | afternoon | evening | night | golden hour | etc",
-    "mood": "The atmospheric mood of the scene",
-    "action": "What physically happens during the 30 seconds — the specific action sequence",
-    "dialogue_hints": ["Any key lines, phrases, or dialogue direction mentioned"]
-  },
-  "visual_style": "Cinematographic style, color palette, camera direction (infer from tone if not stated)",
-  "narrative_arc": "The compressed arc: what is the setup, the central moment, and the resolution within 30 seconds"
+  "shots": [
+    {
+      "number": 1,
+      "location_type": "INT | EXT",
+      "location": "location name in caps (e.g. APARTMENT - BEDROOM)",
+      "time_of_day": "DAY | NIGHT | DAWN | DUSK | GOLDEN HOUR",
+      "shot_type": "ECU | CU | MCU | MS | WS | EWS | POV | INSERT",
+      "duration_seconds": 5,
+      "action": "What happens in this shot. One to three sentences. Active voice.",
+      "dialogue": "Any spoken line, or omit this field if none",
+      "direction": "Camera move or performance note, or omit if none"
+    }
+  ],
+  "visual_style": "Cinematographic style, color palette, camera approach",
+  "narrative_arc": "Setup (Xs) → Moment (Xs) → Resolution (Xs) — one sentence describing each beat and its duration"
 }
 
-If any field has no information from the transcript, make a reasonable creative inference that fits the overall tone. Never leave a field empty.`
+Shot rules:
+- Create 4-7 shots that together total exactly 30 seconds
+- Each shot should be 3-8 seconds. No shot under 2s, no shot over 10s.
+- shot_type ECU=extreme close-up, CU=close-up, MCU=medium close-up, MS=medium shot, WS=wide shot, EWS=extreme wide, POV=point of view, INSERT=insert shot
+- The shots must tell the story described by the director — setup, escalation, climax, resolution
+- If specific shots were not discussed, infer them from the tone and action described
+
+If any field has no information, make a creative inference that fits the overall tone. Never leave a field empty or null.`
