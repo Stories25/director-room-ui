@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef } from 'react'
+import fixWebmDuration from 'fix-webm-duration'
 import { useRouter, useParams } from 'next/navigation'
 import { Film, Play, ArrowRight, ArrowLeft, Loader2, AlertCircle, RefreshCw, Clock } from 'lucide-react'
 import type { VideoClip, StoryboardResult, StoryboardShot } from '@/lib/types'
@@ -58,141 +59,235 @@ function sleep(ms: number) {
 
 function VideoPlayer({
   hasVideo,
-  compiledUrl,
   isGenerating,
   onGenerate,
   totalDuration,
   clips,
 }: {
   hasVideo: boolean
-  compiledUrl?: string
   isGenerating: boolean
   onGenerate: () => void
   totalDuration: number
   clips?: VideoClip[]
 }) {
-  const [playingIndex, setPlayingIndex] = useState<number | null>(null)
+  type StitchState = 'idle' | 'stitching' | 'ready' | 'error'
+  const [stitchState, setStitchState] = useState<StitchState>('idle')
+  const [stitchProgress, setStitchProgress] = useState(0) // 0–100
+  const [stitchClipIdx, setStitchClipIdx] = useState(0)
+  const [blobUrl, setBlobUrl] = useState<string | null>(null)
+  const [stitchError, setStitchError] = useState<string | null>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const blobUrlRef = useRef<string | null>(null)
 
-  const activeVideoUrl = compiledUrl || (playingIndex !== null && clips && clips[playingIndex]?.url)
+  // Revoke blob URL on unmount
+  useEffect(() => {
+    return () => { if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current) }
+  }, [])
+
+  const handleStitch = useCallback(async () => {
+    if (!clips || clips.length === 0) return
+    const readyClips = clips.filter(c => c.status === 'ready' && c.url)
+    if (readyClips.length === 0) return
+
+    setStitchState('stitching')
+    setStitchProgress(0)
+    setStitchClipIdx(0)
+    setStitchError(null)
+
+    try {
+      const canvas = canvasRef.current!
+      canvas.width = 1280
+      canvas.height = 720
+      const ctx = canvas.getContext('2d')!
+
+      // Pick best supported codec
+      const mimeType = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm']
+        .find(m => MediaRecorder.isTypeSupported(m)) ?? 'video/webm'
+
+      const chunks: Blob[] = []
+      const stream = canvas.captureStream(30)
+      const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 4_000_000 })
+      recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data) }
+
+      const startTime = Date.now()
+      recorder.start(100) // collect chunks every 100ms
+
+      for (let i = 0; i < readyClips.length; i++) {
+        setStitchClipIdx(i)
+        const clip = readyClips[i]
+
+        await new Promise<void>((resolve, reject) => {
+          const vid = document.createElement('video')
+          vid.src = clip.url!
+          vid.crossOrigin = 'anonymous'
+          vid.muted = true
+          vid.playsInline = true
+          vid.preload = 'auto'
+
+          vid.onloadeddata = () => {
+            vid.play().catch(reject)
+          }
+          vid.onerror = () => reject(new Error(`Failed to load clip ${clip.shotKey}`))
+
+          let rafId: number
+          const drawFrame = () => {
+            ctx.drawImage(vid, 0, 0, canvas.width, canvas.height)
+            if (!vid.ended && !vid.paused) {
+              rafId = requestAnimationFrame(drawFrame)
+            }
+          }
+
+          vid.onplay = () => { rafId = requestAnimationFrame(drawFrame) }
+
+          vid.onended = () => {
+            cancelAnimationFrame(rafId)
+            // Draw final frame
+            ctx.drawImage(vid, 0, 0, canvas.width, canvas.height)
+            setStitchProgress(Math.round(((i + 1) / readyClips.length) * 100))
+            resolve()
+          }
+        })
+      }
+
+      const durationMs = Date.now() - startTime
+      recorder.stop()
+
+      await new Promise<void>(resolve => { recorder.onstop = () => resolve() })
+
+      const rawBlob = new Blob(chunks, { type: mimeType })
+
+      // Fix WebM duration metadata so the scrubber works correctly
+      const fixedBlob = await fixWebmDuration(rawBlob, durationMs, { logger: false })
+
+      if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current)
+      const url = URL.createObjectURL(fixedBlob)
+      blobUrlRef.current = url
+      setBlobUrl(url)
+      setStitchState('ready')
+    } catch (err) {
+      console.error('[VideoPlayer] Stitch failed:', err)
+      setStitchError(String(err))
+      setStitchState('error')
+    }
+  }, [clips])
+
+  const readyClipCount = clips?.filter(c => c.status === 'ready' && c.url).length ?? 0
 
   return (
     <div
       className="w-full rounded overflow-hidden border"
       style={{ borderColor: 'var(--border-standard)', background: 'var(--surface-1)' }}
     >
-      {/* Player area — 16:9 */}
-      <div
-        className="relative w-full"
-        style={{ aspectRatio: '16/9', background: 'var(--canvas)' }}
-      >
-        {activeVideoUrl ? (
-          <video
-            src={activeVideoUrl}
-            className="w-full h-full object-cover"
-            controls
-            autoPlay
-            onEnded={() => {
-              if (!compiledUrl && playingIndex !== null && clips) {
-                if (playingIndex < clips.length - 1) {
-                  setPlayingIndex(playingIndex + 1)
-                } else {
-                  setPlayingIndex(null)
-                }
-              }
-            }}
-          />
-        ) : (
-          <>
-            {/* Dark cinematic placeholder */}
-            <div
-              className="absolute inset-0 flex flex-col items-center justify-center gap-6"
-              style={{
-                background: 'radial-gradient(ellipse 70% 60% at 50% 50%, rgba(170,136,68,0.04) 0%, transparent 70%)',
-              }}
-            >
-              {/* Viewfinder corners */}
-              <div className="absolute inset-8 pointer-events-none">
-                {[
-                  'top-0 left-0 border-t border-l',
-                  'top-0 right-0 border-t border-r',
-                  'bottom-0 left-0 border-b border-l',
-                  'bottom-0 right-0 border-b border-r',
-                ].map((cls, i) => (
-                  <div
-                    key={i}
-                    className={`absolute w-6 h-6 ${cls}`}
-                    style={{ borderColor: 'var(--border-emphasis)' }}
-                  />
-                ))}
-              </div>
+      {/* Offscreen canvas for stitching */}
+      <canvas ref={canvasRef} style={{ display: 'none' }} />
 
-              {isGenerating ? (
-                <div className="flex flex-col items-center gap-4">
-                  <Loader2
-                    className="w-8 h-8 animate-spin"
-                    style={{ color: 'var(--text-tertiary)' }}
-                  />
-                  <p className="text-sm font-slate breathe" style={{ color: 'var(--text-secondary)' }}>
-                    Generating video clips…
+      {/* Player area — 16:9 */}
+      <div className="relative w-full" style={{ aspectRatio: '16/9', background: 'var(--canvas)' }}>
+
+        {/* Compiled blob playing */}
+        {stitchState === 'ready' && blobUrl ? (
+          <video src={blobUrl} className="w-full h-full object-cover" controls autoPlay />
+        ) : (
+          <div
+            className="absolute inset-0 flex flex-col items-center justify-center gap-6"
+            style={{ background: 'radial-gradient(ellipse 70% 60% at 50% 50%, rgba(170,136,68,0.04) 0%, transparent 70%)' }}
+          >
+            {/* Viewfinder corners */}
+            <div className="absolute inset-8 pointer-events-none">
+              {['top-0 left-0 border-t border-l', 'top-0 right-0 border-t border-r',
+                'bottom-0 left-0 border-b border-l', 'bottom-0 right-0 border-b border-r'].map((cls, i) => (
+                <div key={i} className={`absolute w-6 h-6 ${cls}`} style={{ borderColor: 'var(--border-emphasis)' }} />
+              ))}
+            </div>
+
+            {/* Generating clips state */}
+            {isGenerating && (
+              <div className="flex flex-col items-center gap-4">
+                <Loader2 className="w-8 h-8 animate-spin" style={{ color: 'var(--text-tertiary)' }} />
+                <p className="text-sm font-slate breathe" style={{ color: 'var(--text-secondary)' }}>Generating video clips…</p>
+                <p className="text-xs font-slate" style={{ color: 'var(--text-muted)' }}>This may take a few minutes</p>
+              </div>
+            )}
+
+            {/* Stitching state */}
+            {stitchState === 'stitching' && (
+              <div className="flex flex-col items-center gap-5 w-64">
+                <Loader2 className="w-8 h-8 animate-spin" style={{ color: 'var(--accent-amber)' }} />
+                <div className="w-full space-y-2">
+                  <p className="text-sm font-light text-center" style={{ color: 'var(--text-secondary)' }}>
+                    Stitching clip {stitchClipIdx + 1} of {readyClipCount}…
+                  </p>
+                  {/* Progress bar */}
+                  <div className="w-full h-1 rounded-full overflow-hidden" style={{ background: 'var(--border-subtle)' }}>
+                    <div
+                      className="h-full rounded-full transition-all duration-300"
+                      style={{ width: `${stitchProgress}%`, background: 'var(--accent-amber)' }}
+                    />
+                  </div>
+                  <p className="text-[10px] font-slate text-center" style={{ color: 'var(--text-muted)' }}>
+                    {stitchProgress}% — processing in real time
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Error state */}
+            {stitchState === 'error' && (
+              <div className="flex flex-col items-center gap-4 text-center px-8">
+                <AlertCircle className="w-8 h-8" style={{ color: 'var(--accent-red, #ef4444)' }} />
+                <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Stitch failed</p>
+                <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{stitchError}</p>
+                <Button variant="secondary" size="sm" onClick={handleStitch}>Retry</Button>
+              </div>
+            )}
+
+            {/* Ready to stitch — clips done, not yet stitched */}
+            {!isGenerating && stitchState === 'idle' && hasVideo && (
+              <div className="flex flex-col items-center gap-5 text-center">
+                <button
+                  onClick={handleStitch}
+                  className="w-16 h-16 rounded-full border flex items-center justify-center cursor-pointer group"
+                  style={{ borderColor: 'var(--accent-amber)', background: 'rgba(170,136,68,0.1)' }}
+                >
+                  <Play className="w-7 h-7 ml-0.5 transition-transform duration-200 group-hover:scale-110" style={{ color: 'var(--accent-amber)' }} />
+                </button>
+                <div className="space-y-1">
+                  <p className="text-sm font-light" style={{ color: 'var(--text-primary)' }}>
+                    {readyClipCount} clips ready
                   </p>
                   <p className="text-xs font-slate" style={{ color: 'var(--text-muted)' }}>
-                    This may take a few minutes
+                    Click to stitch &amp; play
                   </p>
                 </div>
-              ) : hasVideo ? (
-                <div className="flex flex-col items-center gap-5 text-center">
-                  <button
-                    onClick={() => {
-                      if (clips && clips.length > 0) setPlayingIndex(0)
-                    }}
-                    className="w-16 h-16 rounded-full border flex items-center justify-center cursor-pointer group"
-                    style={{ borderColor: 'var(--border-emphasis)', background: 'rgba(170,136,68,0.1)' }}
-                  >
-                    <Play className="w-7 h-7 ml-0.5 transition-transform group-hover:scale-110" style={{ color: 'var(--accent-amber)' }} />
-                  </button>
-                  <div className="space-y-1">
-                    <p className="text-sm font-light" style={{ color: 'var(--text-primary)' }}>
-                      Compiled video ready
-                    </p>
-                    <p className="text-xs font-slate" style={{ color: 'var(--text-muted)' }}>
-                      {totalDuration}s · {clips?.length || 0} clips
-                    </p>
-                  </div>
+              </div>
+            )}
+
+            {/* Not yet generated */}
+            {!isGenerating && stitchState === 'idle' && !hasVideo && (
+              <div className="flex flex-col items-center gap-5 text-center">
+                <div
+                  className="w-16 h-16 rounded-full border flex items-center justify-center"
+                  style={{ borderColor: 'var(--border-emphasis)', background: 'rgba(255,255,255,0.03)' }}
+                >
+                  <Play className="w-7 h-7 ml-0.5" style={{ color: 'var(--text-tertiary)' }} />
                 </div>
-              ) : (
-                <div className="flex flex-col items-center gap-5 text-center">
-                  <div
-                    className="w-16 h-16 rounded-full border flex items-center justify-center"
-                    style={{ borderColor: 'var(--border-emphasis)', background: 'rgba(255,255,255,0.03)' }}
-                  >
-                    <Play className="w-7 h-7 ml-0.5" style={{ color: 'var(--text-tertiary)' }} />
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-sm font-light" style={{ color: 'var(--text-secondary)' }}>
-                      Compiled video will appear here
-                    </p>
-                    <p className="text-xs font-slate" style={{ color: 'var(--text-muted)' }}>
-                      {totalDuration}s · {Math.round(totalDuration / 3.5)} clips
-                    </p>
-                  </div>
-                  <Button
-                    variant="primary"
-                    size="md"
-                    onClick={onGenerate}
-                    disabled={isGenerating}
-                    className="group gap-2 mt-2"
-                  >
-                    Generate Video{' '}
-                    <ArrowRight className="w-3 h-3 transition-transform duration-200 group-hover:translate-x-1" />
-                  </Button>
+                <div className="space-y-1">
+                  <p className="text-sm font-light" style={{ color: 'var(--text-secondary)' }}>Compiled video will appear here</p>
+                  <p className="text-xs font-slate" style={{ color: 'var(--text-muted)' }}>
+                    {totalDuration}s · {Math.round(totalDuration / 3.5)} clips
+                  </p>
                 </div>
-              )}
-            </div>
-          </>
+                <Button variant="primary" size="md" onClick={onGenerate} disabled={isGenerating} className="group gap-2 mt-2">
+                  Generate Video{' '}
+                  <ArrowRight className="w-3 h-3 transition-transform duration-200 group-hover:translate-x-1" />
+                </Button>
+              </div>
+            )}
+          </div>
         )}
 
-        {/* Duration pill — bottom left */}
-        {(hasVideo || isGenerating) && (
+        {/* Duration pill */}
+        {(hasVideo || isGenerating) && stitchState !== 'ready' && (
           <div
             className="absolute bottom-3 left-3 flex items-center gap-1.5 px-2 py-1 rounded font-slate text-[10px]"
             style={{ background: 'rgba(0,0,0,0.75)', color: 'var(--text-secondary)' }}
@@ -203,17 +298,22 @@ function VideoPlayer({
         )}
       </div>
 
-      {/* Below player — status bar */}
-      <div
-        className="flex items-center px-5 py-3 border-t gap-3"
-        style={{ borderColor: 'var(--border-subtle)' }}
-      >
-        <div
-          className="h-1.5 w-1.5 rounded-full"
-          style={{ background: hasVideo ? 'var(--accent-green)' : 'var(--text-muted)' }}
-        />
-        <span className="text-[10px] font-slate" style={{ color: hasVideo ? 'var(--accent-green)' : 'var(--text-muted)' }}>
-          {hasVideo ? 'Video ready' : isGenerating ? 'Generating…' : 'Not yet generated'}
+      {/* Status bar */}
+      <div className="flex items-center px-5 py-3 border-t gap-3" style={{ borderColor: 'var(--border-subtle)' }}>
+        <div className="h-1.5 w-1.5 rounded-full" style={{
+          background: stitchState === 'ready' ? 'var(--accent-green)'
+            : stitchState === 'stitching' ? 'var(--accent-amber)'
+            : hasVideo ? 'var(--accent-green)' : 'var(--text-muted)'
+        }} />
+        <span className="text-[10px] font-slate" style={{
+          color: stitchState === 'ready' ? 'var(--accent-green)'
+            : stitchState === 'stitching' ? 'var(--accent-amber)'
+            : hasVideo ? 'var(--accent-green)' : 'var(--text-muted)'
+        }}>
+          {stitchState === 'ready' ? 'Video ready'
+            : stitchState === 'stitching' ? `Stitching… ${stitchProgress}%`
+            : hasVideo ? 'Clips ready — click play to compile'
+            : isGenerating ? 'Generating…' : 'Not yet generated'}
         </span>
       </div>
     </div>
@@ -820,7 +920,6 @@ export default function VideoPage() {
           <div className="mb-10">
             <VideoPlayer
               hasVideo={hasVideo}
-              compiledUrl={undefined}
               isGenerating={isGenerating}
               onGenerate={handleGenerate}
               totalDuration={totalDuration}
