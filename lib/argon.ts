@@ -50,6 +50,7 @@ export async function createProject(title: string, prompt: string): Promise<stri
   const data = await res.json()
   // Handle both flat and nested response shapes
   const id =
+    data?.data?.project?.id ??
     data?.id ??
     data?.data?.id ??
     data?.project_id ??
@@ -74,10 +75,19 @@ export async function generateScript(projectId: string): Promise<void> {
 // ─── Step 3: POST /runway/projects/:id/storyboard ───────────────────────────
 
 export async function generateStoryboard(projectId: string): Promise<StoryboardResult> {
-  const res = await fetch(`${BASE_URL}/runway/projects/${projectId}/storyboard`, {
-    method: 'POST',
-    headers: headers(),
-  })
+  // Storyboard generation can take up to ~2 minutes
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 240_000)
+  let res: Response
+  try {
+    res = await fetch(`${BASE_URL}/runway/projects/${projectId}/storyboard`, {
+      method: 'POST',
+      headers: headers(),
+      signal: controller.signal,
+    })
+  } finally {
+    clearTimeout(timeout)
+  }
   if (!res.ok) {
     const err = await res.text()
     throw new Error(`generateStoryboard failed (${res.status}): ${err}`)

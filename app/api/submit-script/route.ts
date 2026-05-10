@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { ScriptDocument } from '@/lib/types'
 import { buildPrompt, createProject, generateScript, generateStoryboard } from '@/lib/argon'
 
+// Pipeline takes ~2-3 minutes total — extend Next.js route timeout to 5 minutes
+export const maxDuration = 300
+
 export async function POST(request: NextRequest) {
   try {
     const { script }: { script: ScriptDocument } = await request.json()
@@ -10,7 +13,7 @@ export async function POST(request: NextRequest) {
     }
 
     const prompt = buildPrompt(script)
-    const title  = script.title || 'Director\'s Room Teaser'
+    const title  = script.title || "Director's Room Teaser"
 
     console.log('[submit-script] Step 1: Creating project...')
     const projectId = await createProject(title, prompt)
