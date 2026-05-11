@@ -3,10 +3,10 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import fixWebmDuration from 'fix-webm-duration'
 import { useRouter, useParams } from 'next/navigation'
-import { Film, Play, ArrowRight, ArrowLeft, Loader2, AlertCircle, RefreshCw, Clock } from 'lucide-react'
-import type { VideoClip, StoryboardResult, StoryboardShot } from '@/lib/types'
+import { Film, Play, ArrowRight, ArrowLeft, Loader2, AlertCircle, AlertTriangle, RefreshCw, Clock } from 'lucide-react'
+import type { VideoClip, StoryboardResult, StoryboardShot, BatchVideoFireResult, VideoGenConfig } from '@/lib/types'
 import { getPendingVideoTasks, isVideoAll } from '@/lib/types'
-import { generateShotVideo, checkVideoTask } from '@/lib/argon-browser'
+import { generateShotVideo, checkVideoTask, generateStoryboardVideos, checkStoryboardVideoTasks } from '@/lib/argon-browser'
 import { Sprocket, TopBar } from '@/components/shell/Shell'
 import WorkflowStepper from '@/components/WorkflowStepper'
 import Button from '@/components/ui/Button'
@@ -23,7 +23,7 @@ function getActiveImageUrl(shot: StoryboardShot): string | null {
 
 
 const TOTAL_S = 30
-const POLL_INTERVAL_MS = 10_000
+const POLL_INTERVAL_MS = 7_000
 
 function sortKeys(keys: string[]) {
   return [...keys].sort((a, b) => {
@@ -65,6 +65,8 @@ function VideoPlayer({
   totalDuration,
   clips,
   genProgress,
+  videoConfig,
+  onConfigChange,
 }: {
   hasVideo: boolean
   isGenerating: boolean
@@ -72,6 +74,8 @@ function VideoPlayer({
   totalDuration: number
   clips?: VideoClip[]
   genProgress: { done: number; total: number } | null
+  videoConfig: VideoGenConfig
+  onConfigChange: (config: VideoGenConfig) => void
 }) {
   type StitchState = 'idle' | 'stitching' | 'ready' | 'error'
   const [stitchState, setStitchState] = useState<StitchState>('idle')
@@ -231,7 +235,7 @@ function VideoPlayer({
                   <div className="w-full space-y-2">
                     <div className="flex items-center justify-between">
                       <p className="text-sm font-light" style={{ color: 'var(--text-secondary)' }}>
-                        Starting shot {Math.min(genProgress.done + 1, genProgress.total)} of {genProgress.total}
+                        Rendering {genProgress.done} of {genProgress.total} shots
                       </p>
                       <span className="text-[10px] font-slate tabular-nums" style={{ color: 'var(--text-muted)' }}>
                         {genProgress.done}/{genProgress.total}
@@ -242,7 +246,7 @@ function VideoPlayer({
                       <div
                         className="h-full rounded-full transition-all duration-500"
                         style={{
-                          width: `${Math.round((genProgress.done / genProgress.total) * 100)}%`,
+                          width: `${genProgress.total > 0 ? Math.round((genProgress.done / genProgress.total) * 100) : 0}%`,
                           background: 'var(--accent-amber)',
                         }}
                       />
@@ -324,6 +328,35 @@ function VideoPlayer({
                   <p className="text-xs font-slate" style={{ color: 'var(--text-muted)' }}>
                     {totalDuration}s · {Math.round(totalDuration / 3.5)} clips
                   </p>
+                </div>
+                {/* Config controls */}
+                <div className="flex items-center gap-3 mt-1">
+                  <select
+                    value={videoConfig.model}
+                    onChange={e => onConfigChange({ ...videoConfig, model: e.target.value })}
+                    className="text-[10px] font-slate px-2 py-1 rounded border outline-none"
+                    style={{ background: 'var(--surface-2)', color: 'var(--text-secondary)', borderColor: 'var(--border-subtle)' }}
+                  >
+                    <option value="veo3.1">veo3.1</option>
+                  </select>
+                  <select
+                    value={String(videoConfig.duration)}
+                    onChange={e => onConfigChange({ ...videoConfig, duration: Number(e.target.value) })}
+                    className="text-[10px] font-slate px-2 py-1 rounded border outline-none"
+                    style={{ background: 'var(--surface-2)', color: 'var(--text-secondary)', borderColor: 'var(--border-subtle)' }}
+                  >
+                    <option value="4">4s</option>
+                    <option value="8">8s</option>
+                  </select>
+                  <select
+                    value={videoConfig.ratio}
+                    onChange={e => onConfigChange({ ...videoConfig, ratio: e.target.value })}
+                    className="text-[10px] font-slate px-2 py-1 rounded border outline-none"
+                    style={{ background: 'var(--surface-2)', color: 'var(--text-secondary)', borderColor: 'var(--border-subtle)' }}
+                  >
+                    <option value="1280:720">16:9</option>
+                    <option value="720:1280">9:16</option>
+                  </select>
                 </div>
                 <Button variant="primary" size="md" onClick={onGenerate} disabled={isGenerating} className="group gap-2 mt-2">
                   Generate Video{' '}
@@ -623,6 +656,13 @@ export default function VideoPage() {
   const [regeneratingClip, setRegeneratingClip] = useState<string | null>(null)
   const [checkingClip, setCheckingClip] = useState<string | null>(null)
   const [genProgress, setGenProgress] = useState<{ done: number; total: number } | null>(null)
+  const [skippedShots, setSkippedShots] = useState<BatchVideoFireResult['skipped']>([])
+  const [fireFailures, setFireFailures] = useState<BatchVideoFireResult['failures']>([])
+  const [videoConfig, setVideoConfig] = useState<VideoGenConfig>({
+    model: 'veo3.1',
+    duration: 4,
+    ratio: '1280:720',
+  })
 
   const mountedRef = useRef(true)
 
@@ -638,65 +678,48 @@ export default function VideoPage() {
     setStoryboard(sb)
   }, [])
 
-  // ── Sequential poll loop ─────────────────────────────────────────────────────
-  const runPollLoop = useCallback(async (sb: StoryboardResult): Promise<StoryboardResult> => {
+  // ── Batch poll loop ──────────────────────────────────────────────────────────
+  const runPollLoop = useCallback(async (sb: StoryboardResult, firedTotal?: number): Promise<StoryboardResult> => {
     let current = sb
+    const total = firedTotal ?? Object.values(sb.shots).filter(s =>
+      s.video?.generations?.some(g => g.status === 'pending' || g.status === 'processing')
+    ).length
 
     while (mountedRef.current) {
-      const pending = getPendingVideoTasks(current.shots)
-      if (pending.length === 0) break
+      if (!mountedRef.current) return current
 
-      const updated = { ...current, shots: { ...current.shots } }
+      try {
+        const { status, storyboardResult } = await checkStoryboardVideoTasks(projectId)
+        current = { ...storyboardResult, projectTitle: current.projectTitle }
+        persistStoryboard(current)
 
-      // Check each pending task sequentially
-      for (const { shotKey, taskId } of pending) {
-        if (!mountedRef.current) return current
-        try {
-          const gen = await checkVideoTask(projectId, shotKey, taskId)
-          updated.shots = {
-            ...updated.shots,
-            [shotKey]: {
-              ...updated.shots[shotKey],
-              video: {
-                active: updated.shots[shotKey].video?.active ?? 0,
-                generations: (updated.shots[shotKey].video?.generations ?? []).map(g =>
-                  g.task_id === taskId ? gen : g
-                ),
-              },
-            },
-          }
-        } catch (err) {
-          console.error(`[video] Poll failed for shot ${shotKey}:`, err)
+        const doneCount = Object.values(status.shots_status)
+          .filter(s => s.status === 'succeeded' || s.status === 'failed').length
+        setGenProgress(total > 0 ? { done: doneCount, total } : null)
+
+        if (status.all_done) {
+          try {
+            const res = await fetch(`/api/projects/${projectId}`)
+            if (res.ok) {
+              const { project } = await res.json()
+              if (project?.storyboard?.shots) {
+                current = {
+                  projectId: project.id,
+                  projectTitle: project.title,
+                  shots: project.storyboard.shots,
+                  activeGrid: project.storyboard.active_grid,
+                }
+                persistStoryboard(current)
+              }
+            }
+          } catch { /* best-effort */ }
+          break
         }
+      } catch (err) {
+        console.error('[video] Batch poll failed:', err)
       }
 
       if (!mountedRef.current) return current
-      persistStoryboard(updated)
-      current = updated
-
-      if (isVideoAll(current.shots)) {
-        // All done — do one final refetch to get authoritative URLs from backend
-        try {
-          const res = await fetch(`/api/projects/${projectId}`)
-          if (res.ok) {
-            const { project } = await res.json()
-            if (project?.storyboard?.shots) {
-              current = {
-                projectId: project.id,
-                projectTitle: project.title,
-                shots: project.storyboard.shots,
-                activeGrid: project.storyboard.active_grid,
-              }
-              persistStoryboard(current)
-            }
-          }
-        } catch { /* best-effort */ }
-        break
-      }
-
-      const stillPending = getPendingVideoTasks(current.shots)
-      if (stillPending.length === 0) break
-
       await sleep(POLL_INTERVAL_MS)
     }
 
@@ -704,6 +727,7 @@ export default function VideoPage() {
   }, [projectId, persistStoryboard])
 
   // ── Boot ─────────────────────────────────────────────────────────────────────
+  const autoFired = useRef(false)
   useEffect(() => {
     mountedRef.current = true
 
@@ -724,12 +748,39 @@ export default function VideoPage() {
           activeGrid: project.storyboard.active_grid,
         }
         setStoryboard(sb)
+
         const pending = getPendingVideoTasks(sb.shots)
         if (pending.length > 0) {
           setPageState('generating')
           runPollLoop(sb).then(() => {
             if (mountedRef.current) setPageState('ready')
           })
+        } else if (!isVideoAll(sb.shots) && !autoFired.current) {
+          autoFired.current = true
+          setPageState('generating')
+          generateStoryboardVideos(projectId)
+            .then(({ fire, storyboardResult }) => {
+              if (!mountedRef.current) return
+              const updated = { ...storyboardResult, projectTitle: sb.projectTitle }
+              persistStoryboard(updated)
+              if (fire.skipped.length > 0) setSkippedShots(fire.skipped)
+              if (fire.failures.length > 0) setFireFailures(fire.failures)
+              if (fire.fired_count > 0) {
+                setGenProgress({ done: 0, total: fire.fired_count })
+                return runPollLoop(updated, fire.fired_count)
+              }
+              return updated
+            })
+            .then(() => {
+              if (mountedRef.current) setPageState('ready')
+            })
+            .catch(err => {
+              console.error('[video] Auto-fire failed:', err)
+              if (mountedRef.current) {
+                setError(`Failed to generate videos: ${String(err)}`)
+                setPageState('error')
+              }
+            })
         } else {
           setPageState('ready')
         }
@@ -743,62 +794,39 @@ export default function VideoPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // ── Generate all shots sequentially ─────────────────────────────────────────
+  // ── Generate all shots via batch API ──────────────────────────────────────
   const handleGenerate = useCallback(async () => {
     if (!storyboard) return
     setError(null)
     setPageState('generating')
+    setSkippedShots([])
+    setFireFailures([])
+    setGenProgress(null)
 
-    const keys = sortKeys(Object.keys(storyboard.shots))
-    const total = keys.length
-    setGenProgress({ done: 0, total })
-    let current = { ...storyboard, shots: { ...storyboard.shots } }
+    try {
+      const { fire, storyboardResult } = await generateStoryboardVideos(projectId, videoConfig)
+      const updated = { ...storyboardResult, projectTitle: storyboard.projectTitle }
+      persistStoryboard(updated)
 
-    // Phase 1 — kick off generation for each shot sequentially
-    for (let idx = 0; idx < keys.length; idx++) {
-      const shotKey = keys[idx]
-      if (!mountedRef.current) return
+      if (fire.skipped.length > 0) setSkippedShots(fire.skipped)
+      if (fire.failures.length > 0) setFireFailures(fire.failures)
 
-      // Skip shots that already have a succeeded generation
-      const gens = current.shots[shotKey].video?.generations ?? []
-      if (gens.some(g => g.status === 'succeeded')) {
-        setGenProgress({ done: idx + 1, total })
-        continue
+      if (fire.fired_count > 0) {
+        setGenProgress({ done: 0, total: fire.fired_count })
+        await runPollLoop(updated, fire.fired_count)
+      } else if (fire.skipped_count > 0 && fire.fired_count === 0) {
+        setError('All shots were skipped — no new videos to generate.')
       }
 
-      try {
-        const gen = await generateShotVideo(projectId, shotKey)
-        current = {
-          ...current,
-          shots: {
-            ...current.shots,
-            [shotKey]: {
-              ...current.shots[shotKey],
-              video: {
-                active: current.shots[shotKey].video?.active ?? 0,
-                generations: [...gens, gen],
-              },
-            },
-          },
-        }
-        persistStoryboard(current)
-        setGenProgress({ done: idx + 1, total })
-      } catch (err) {
-        console.error(`[video] generateShotVideo failed for ${shotKey}:`, err)
-        if (mountedRef.current) {
-          setError(`Failed to start video for shot ${shotKey}: ${String(err)}`)
-          setPageState('error')
-        }
-        return
+      if (mountedRef.current) setPageState('ready')
+    } catch (err) {
+      console.error('[video] Batch fire failed:', err)
+      if (mountedRef.current) {
+        setError(`Failed to generate videos: ${String(err)}`)
+        setPageState('error')
       }
     }
-
-    if (!mountedRef.current) return
-
-    // Phase 2 — poll all tasks sequentially until done
-    await runPollLoop(current)
-    if (mountedRef.current) setPageState('ready')
-  }, [storyboard, projectId, persistStoryboard, runPollLoop])
+  }, [storyboard, projectId, persistStoryboard, runPollLoop, videoConfig])
 
   // ── Regenerate a single clip ──────────────────────────────────────────────
   const handleRegenerateClip = useCallback(async (shotKey: string) => {
@@ -960,6 +988,36 @@ export default function VideoPage() {
             </div>
           )}
 
+          {/* ── Skipped shots ── */}
+          {skippedShots.length > 0 && (
+            <div
+              className="mb-4 rounded border px-4 py-3 flex items-center gap-3"
+              style={{ borderColor: 'rgba(170,136,68,0.25)', background: 'rgba(170,136,68,0.05)' }}
+            >
+              <AlertTriangle className="w-4 h-4 flex-none" style={{ color: 'var(--accent-amber)' }} />
+              <p className="text-xs flex-1" style={{ color: 'var(--text-secondary)' }}>
+                {skippedShots.length} shot{skippedShots.length > 1 ? 's' : ''} skipped:{' '}
+                {skippedShots.map(s => `${s.shot_id} (${s.reason})`).join(', ')}
+              </p>
+              <Button variant="tertiary" size="sm" onClick={() => setSkippedShots([])}>Dismiss</Button>
+            </div>
+          )}
+
+          {/* ── Fire failures ── */}
+          {fireFailures.length > 0 && (
+            <div
+              className="mb-4 rounded border px-4 py-3 flex items-center gap-3"
+              style={{ borderColor: 'rgba(204,68,68,0.2)', background: 'rgba(204,68,68,0.05)' }}
+            >
+              <AlertCircle className="w-4 h-4 flex-none" style={{ color: 'var(--accent-red)' }} />
+              <p className="text-xs flex-1" style={{ color: 'var(--accent-red)' }}>
+                {fireFailures.length} shot{fireFailures.length > 1 ? 's' : ''} failed to fire:{' '}
+                {fireFailures.map(f => `${f.shot_id}${f.reason ? ` (${f.reason})` : ''}`).join(', ')}. Use &quot;Regenerate clip&quot; to retry.
+              </p>
+              <Button variant="tertiary" size="sm" onClick={() => setFireFailures([])}>Dismiss</Button>
+            </div>
+          )}
+
           {/* ── Compiled video player ── */}
           <div className="mb-10">
             <VideoPlayer
@@ -969,6 +1027,8 @@ export default function VideoPage() {
               totalDuration={totalDuration}
               clips={displayClips}
               genProgress={genProgress}
+              videoConfig={videoConfig}
+              onConfigChange={setVideoConfig}
             />
           </div>
 

@@ -107,6 +107,36 @@ export interface StoryboardResult {
   activeGrid: number
 }
 
+// ─── Batch video types ─────────────────────────────────────────────────────
+
+export interface BatchVideoFireResult {
+  fired_count: number
+  failed_count: number
+  skipped_count: number
+  failures: Array<{ shot_id: string; reason?: string }>
+  skipped: Array<{ shot_id: string; reason: string }>
+  tasks: Array<{ shot_id: string; task_id: string; status: string }>
+  model: string
+  duration: number
+  ratio: string
+}
+
+export interface BatchVideoStatusResult {
+  shots_status: Record<string, {
+    task_id: string
+    status: string
+    video_url: string | null
+  }>
+  all_done: boolean
+  checked_count: number
+}
+
+export interface VideoGenConfig {
+  model: string
+  duration: number
+  ratio: string
+}
+
 // ─── BGM (Background Music) types ───────────────────────────────────────────
 
 export interface BgmTimestamp {

@@ -3,7 +3,7 @@
  * Calls Argon directly from the browser — token is intentionally public for now.
  * CORS is open (*) on the Argon server so direct calls are viable.
  */
-import type { ScriptDocument, StoryboardResult, StoryboardShotVideoGeneration, SoundResult, SoundTrack } from './types'
+import type { ScriptDocument, StoryboardResult, StoryboardShotVideoGeneration, BatchVideoFireResult, BatchVideoStatusResult, VideoGenConfig, SoundResult, SoundTrack } from './types'
 
 const BASE_URL   = process.env.NEXT_PUBLIC_ARGON_BASE_URL!
 const AUTH_TOKEN = process.env.NEXT_PUBLIC_ARGON_AUTH_TOKEN!
@@ -183,6 +183,81 @@ export async function checkVideoTask(projectId: string, shotKey: string, taskId:
     url: gen.video_url ?? undefined,
     prompt: gen.prompt ?? undefined,
     created_at: gen.created_at ?? Date.now(),
+  }
+}
+
+// ─── Batch: POST /runway/projects/:id/storyboard/video ─────────────────────
+
+export async function generateStoryboardVideos(
+  projectId: string,
+  config?: Partial<VideoGenConfig>,
+): Promise<{ fire: BatchVideoFireResult; storyboardResult: StoryboardResult }> {
+  const body = {
+    model: config?.model ?? 'veo3.1',
+    duration: config?.duration ?? 4,
+    ratio: config?.ratio ?? '1280:720',
+  }
+  const res = await fetch(`${BASE_URL}/runway/projects/${projectId}/storyboard/video`, {
+    method: 'POST',
+    headers: headers(),
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error(`Failed to fire batch video (${res.status}): ${err}`)
+  }
+  const data = await res.json()
+  const inner = data?.data ?? data
+  const storyboard = inner?.storyboard ?? data?.storyboard
+  if (!storyboard) throw new Error(`No storyboard in batch fire response: ${JSON.stringify(data)}`)
+  return {
+    fire: {
+      fired_count: inner.fired_count ?? 0,
+      failed_count: inner.failed_count ?? 0,
+      skipped_count: inner.skipped_count ?? 0,
+      failures: inner.failures ?? [],
+      skipped: inner.skipped ?? [],
+      tasks: inner.tasks ?? [],
+      model: inner.model ?? body.model,
+      duration: inner.duration ?? body.duration,
+      ratio: inner.ratio ?? body.ratio,
+    },
+    storyboardResult: {
+      projectId,
+      shots: storyboard.shots,
+      activeGrid: storyboard.active_grid,
+    },
+  }
+}
+
+// ─── Batch: GET /runway/projects/:id/storyboard/video-tasks ────────────────
+
+export async function checkStoryboardVideoTasks(
+  projectId: string,
+): Promise<{ status: BatchVideoStatusResult; storyboardResult: StoryboardResult }> {
+  const res = await fetch(`${BASE_URL}/runway/projects/${projectId}/storyboard/video-tasks`, {
+    method: 'GET',
+    headers: headers(),
+  })
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error(`Failed to check batch video tasks (${res.status}): ${err}`)
+  }
+  const data = await res.json()
+  const inner = data?.data ?? data
+  const storyboard = inner?.storyboard ?? data?.storyboard
+  if (!storyboard) throw new Error(`No storyboard in batch status response: ${JSON.stringify(data)}`)
+  return {
+    status: {
+      shots_status: inner.shots_status ?? {},
+      all_done: inner.all_done ?? false,
+      checked_count: inner.checked_count ?? 0,
+    },
+    storyboardResult: {
+      projectId,
+      shots: storyboard.shots,
+      activeGrid: storyboard.active_grid,
+    },
   }
 }
 
