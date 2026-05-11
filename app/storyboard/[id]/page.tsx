@@ -108,13 +108,6 @@ function ShotCard({ shotKey, shot }: { shotKey: string; shot: StoryboardShot }) 
   )
 }
 
-function readSessionStoryboard(): StoryboardResult | null {
-  if (typeof window === 'undefined') return null
-  const stored = sessionStorage.getItem('directors-room-storyboard')
-  if (!stored) return null
-  try { return JSON.parse(stored) } catch { return null }
-}
-
 export default function StoryboardPage() {
   const router = useRouter()
   const params = useParams()
@@ -122,8 +115,8 @@ export default function StoryboardPage() {
   const projectId = params?.id as string
 
   // Always start with 'loading' — resolved after mount so server and client
-  // render the same initial HTML (avoids hydration mismatch from sessionStorage
-  // and useSearchParams which are unavailable on the server).
+  // render the same initial HTML (avoids hydration mismatch from useSearchParams
+  // which is unavailable on the server).
   const [pageState, setPageState] = useState<PageState>('loading')
   const [storyboard, setStoryboard] = useState<StoryboardResult | null>(null)
   const [currentStep, setCurrentStep] = useState<PipelineStep>('script')
@@ -138,21 +131,12 @@ export default function StoryboardPage() {
     }
   }, [storyboard?.projectTitle])
 
-  // Pipeline ref — populated on mount from sessionStorage
+  // Pipeline ref — populated on mount
   const pipelineRef = useRef(pipelineState.read())
 
-  // Resolve the real initial state once on the client after mount
   useEffect(() => {
     const isBuilding = searchParams?.get('building') === '1'
     const pipeline = pipelineRef.current
-    const cachedStoryboard = readSessionStoryboard()
-
-    if (cachedStoryboard) {
-      setStoryboard(cachedStoryboard)
-      setUpscaleState(isUpscaledAll(cachedStoryboard.shots) ? 'done' : 'idle')
-      setPageState('ready')
-      return
-    }
 
     if (isBuilding && pipeline?.projectId === projectId) {
       setCurrentStep(pipeline.step === 'storyboard' ? 'storyboard' : 'script')
@@ -160,17 +144,15 @@ export default function StoryboardPage() {
       return
     }
 
-    // Soft-refresh lost ?building=1 but pipeline state is still in sessionStorage
     if (pipeline?.projectId === projectId) {
       setCurrentStep(pipeline.step === 'storyboard' ? 'storyboard' : 'script')
       setPageState('building')
       return
     }
 
-    // Cold load — no local context at all
     setPageState('loading')
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []) // intentionally runs once on mount only
+  }, [])
 
   // Sync upscale state when storyboard arrives from the cold-load API path
   useEffect(() => {
@@ -197,9 +179,7 @@ export default function StoryboardPage() {
       const sb = await generateStoryboard(pid)
       sb.projectTitle = pl?.script?.title
 
-      // Done
       pipelineState.clear()
-      sessionStorage.setItem('directors-room-storyboard', JSON.stringify(sb))
       setStoryboard(sb)
       setPageState('ready')
       router.replace(`/storyboard/${pid}`)
@@ -223,7 +203,6 @@ export default function StoryboardPage() {
           .then(sb => {
             sb.projectTitle = pl?.script?.title
             pipelineState.clear()
-            sessionStorage.setItem('directors-room-storyboard', JSON.stringify(sb))
             setStoryboard(sb)
             setPageState('ready')
             router.replace(`/storyboard/${projectId}`)
@@ -301,7 +280,6 @@ export default function StoryboardPage() {
     try {
       const upscaled = await upscaleStoryboard(projectId)
       upscaled.projectTitle = storyboard.projectTitle
-      sessionStorage.setItem('directors-room-storyboard', JSON.stringify(upscaled))
       setStoryboard(upscaled)
       setUpscaleState('done')
     } catch (err) {

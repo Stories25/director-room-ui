@@ -162,9 +162,8 @@ export async function generateMusic(projectId: string): Promise<Bgm[]> {
     const err = await res.text()
     throw new Error(`generateMusic failed (${res.status}): ${err}`)
   }
-  const data = await res.json()
-  const bgms: Bgm[] = data?.data?.bgms ?? data?.bgms ?? []
-  return bgms
+  const project = await getProject(projectId)
+  return project?.bgms ?? []
 }
 
 // ─── Step 4: Video generation (stub) ────────────────────────────────────────

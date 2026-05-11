@@ -612,15 +612,6 @@ function ClipRow({
 
 // ─── Session helpers ──────────────────────────────────────────────────────────
 
-function readSessionStoryboard(): StoryboardResult | null {
-  if (typeof window === 'undefined') return null
-  const stored = sessionStorage.getItem('directors-room-storyboard')
-  if (!stored) return null
-  try { return JSON.parse(stored) } catch { return null }
-}
-
-// ─── Page ─────────────────────────────────────────────────────────────────────
-
 export default function VideoPage() {
   const router = useRouter()
   const params = useParams()
@@ -644,7 +635,6 @@ export default function VideoPage() {
   }, [storyboard?.projectTitle])
 
   const persistStoryboard = useCallback((sb: StoryboardResult) => {
-    sessionStorage.setItem('directors-room-storyboard', JSON.stringify(sb))
     setStoryboard(sb)
   }, [])
 
@@ -716,23 +706,6 @@ export default function VideoPage() {
   // ── Boot ─────────────────────────────────────────────────────────────────────
   useEffect(() => {
     mountedRef.current = true
-
-    const cachedStoryboard = readSessionStoryboard()
-
-    if (cachedStoryboard) {
-      setStoryboard(cachedStoryboard)
-      // Auto-resume polling if there were pending tasks
-      const pending = getPendingVideoTasks(cachedStoryboard.shots)
-      if (pending.length > 0) {
-        setPageState('generating')
-        runPollLoop(cachedStoryboard).then(() => {
-          if (mountedRef.current) setPageState('ready')
-        })
-      } else {
-        setPageState('ready')
-      }
-      return
-    }
 
     async function fetchFromAPI() {
       try {

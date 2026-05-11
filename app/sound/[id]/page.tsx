@@ -387,7 +387,7 @@ export default function SoundPage() {
       }
       const { bgms: newBgms } = await res.json()
       if (newBgms && newBgms.length > 0) {
-        setBgms(prev => [...prev, ...newBgms])
+        setBgms(newBgms)
         setActiveBgmId(newBgms[newBgms.length - 1].id)
         setApproved(false)
       }
