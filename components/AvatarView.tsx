@@ -67,30 +67,29 @@ function AvatarCallUI({ onTranscriptUpdate, onMicStateChange, onEnd, onActive, s
   }, [handleEnd])
 
   return (
-    <div className="relative h-full w-full">
+    <div className="relative h-full w-full overflow-hidden rounded-full">
       {/* Avatar video — centered and zoomed to frame the face */}
       <AvatarVideo
         className="h-full w-full"
         style={{
           objectFit: 'cover',
           objectPosition: 'center 25%',
-          transform: 'scale(1.15)',
+          transform: 'scale(1.25)',
         }}
       />
 
-      {/* Vignette overlay */}
+      {/* Subtle shadow overlay for depth */}
       <div
-        className="pointer-events-none absolute inset-0"
+        className="pointer-events-none absolute inset-0 rounded-full"
         style={{
-          background:
-            'radial-gradient(ellipse 80% 80% at 50% 50%, transparent 40%, rgba(8,8,8,0.6) 100%)',
+          boxShadow: 'inset 0 0 40px rgba(0,0,0,0.15)',
         }}
       />
 
       {/* Connecting state overlay */}
       {state === 'connecting' && (
-        <div className="absolute inset-0 flex items-center justify-center bg-[#080808]">
-          <p className="text-xs tracking-[0.3em] uppercase breathe" style={{ color: '#3a3a3a' }}>
+        <div className="absolute inset-0 flex items-center justify-center rounded-full" style={{ background: 'var(--surface-2)' }}>
+          <p className="text-xs tracking-[0.3em] uppercase breathe" style={{ color: 'var(--text-muted)' }}>
             Connecting...
           </p>
         </div>

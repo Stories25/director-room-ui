@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
-import { Check, ArrowRight } from 'lucide-react'
+import { Check, ArrowRight, Mic, ArrowUp } from 'lucide-react'
 import TranscriptPanel from '@/components/TranscriptPanel'
 import StoryPanel, { StoryExtraction } from '@/components/StoryPanel'
 import WaveformIndicator from '@/components/WaveformIndicator'
@@ -17,7 +17,6 @@ import WorkflowStepper from '@/components/WorkflowStepper'
 const AvatarView = dynamic(() => import('@/components/AvatarView'), { ssr: false })
 
 type PageState = 'loading' | 'connected' | 'confirming' | 'finishing' | 'error'
-type RightTab = 'transcript' | 'story'
 
 const AVATAR_ID = process.env.NEXT_PUBLIC_AVATAR_ID!
 
@@ -54,7 +53,6 @@ export default function RoomPage() {
   const [isSpeaking, setIsSpeaking] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [elapsed, setElapsed] = useState(0)
-  const [rightTab, setRightTab] = useState<RightTab>('transcript')
   const [sessionStartedAt, setSessionStartedAt] = useState<number>(0)
   const [timeWarning, setTimeWarning] = useState<'none' | 'warning' | 'critical'>('none')
 
@@ -249,9 +247,6 @@ export default function RoomPage() {
         if (res.ok) {
           const { extraction: ext } = await res.json()
           setExtraction(ext)
-          if (Object.values(ext).some(v => v !== null)) {
-            setRightTab('story')
-          }
         }
       } finally {
         setIsExtracting(false)
@@ -320,6 +315,9 @@ export default function RoomPage() {
       setPageState('error')
     }
   }, [transcript, router])
+
+  // ── Get the latest transcript entry for the speech bubble ──
+  const latestEntry = transcript.length > 0 ? transcript[transcript.length - 1] : null
 
   return (
     <main className="flex h-screen w-screen overflow-hidden" style={{ background: 'var(--canvas)' }}>
@@ -440,120 +438,199 @@ export default function RoomPage() {
           <WorkflowStepper current="story" />
 
           <div className="flex-1 flex overflow-hidden">
-            {/* Left: Avatar (60%) with viewfinder brackets */}
-            <div className="relative flex-[0_0_60%] h-full overflow-hidden">
-            <AvatarView
-              credentials={credentials}
-              onTranscriptUpdate={handleTranscriptUpdate}
-              onMicStateChange={handleMicStateChange}
-              onSessionEnded={handleSessionEnded}
-              onSessionActive={handleSessionActive}
-            />
-
-            {/* Viewfinder corner brackets */}
-            <div className="absolute inset-4 pointer-events-none z-10">
-              <div className="absolute top-0 left-0 w-6 h-px" style={{ background: 'var(--border-standard)' }} />
-              <div className="absolute top-0 left-0 w-px h-6" style={{ background: 'var(--border-standard)' }} />
-              <div className="absolute top-0 right-0 w-6 h-px" style={{ background: 'var(--border-standard)' }} />
-              <div className="absolute top-0 right-0 w-px h-6" style={{ background: 'var(--border-standard)' }} />
-              <div className="absolute bottom-0 left-0 w-6 h-px" style={{ background: 'var(--border-standard)' }} />
-              <div className="absolute bottom-0 left-0 w-px h-6" style={{ background: 'var(--border-standard)' }} />
-              <div className="absolute bottom-0 right-0 w-6 h-px" style={{ background: 'var(--border-standard)' }} />
-              <div className="absolute bottom-0 right-0 w-px h-6" style={{ background: 'var(--border-standard)' }} />
-            </div>
-
-            {/* Session timer */}
-            {sessionStartedAt > 0 && (
-              <div className="absolute top-5 right-5 z-10">
-                <SessionTimer
-                  startedAt={sessionStartedAt}
-                  maxSeconds={300}
-                  onWarning={() => setTimeWarning('warning')}
-                  onCritical={() => setTimeWarning('critical')}
-                />
-              </div>
-            )}
-
-            {/* Time warning banners */}
-            {timeWarning === 'warning' && (
-              <div className="absolute bottom-24 left-0 right-0 flex justify-center z-10 slide-up">
-                <div className="px-4 py-2 rounded text-xs"
-                  style={{ background: 'rgba(20,15,5,0.9)', border: '1px solid var(--accent-warm)', color: 'var(--accent-warm)' }}>
-                  About 1 minute remaining — start wrapping up
-                </div>
-              </div>
-            )}
-            {timeWarning === 'critical' && (
-              <div className="absolute bottom-24 left-0 right-0 flex justify-center z-10 slide-up">
-                <div className="px-4 py-2 rounded text-xs timer-flash"
-                  style={{ background: 'rgba(20,5,5,0.9)', border: '1px solid var(--accent-red)', color: 'var(--accent-red)' }}>
-                  30 seconds remaining — finish soon
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Right: Tabbed panel (40%) */}
-          <div
-            className="flex flex-[0_0_40%] flex-col h-full border-l overflow-hidden"
-            style={{ borderColor: 'var(--border-subtle)', background: 'var(--canvas)' }}
-          >
-            {/* Tab bar */}
-            <div className="flex-none flex border-b" style={{ borderColor: 'var(--border-subtle)' }}>
-              {(['transcript', 'story'] as RightTab[]).map(tab => (
-                <button
-                  key={tab}
-                  onClick={() => setRightTab(tab)}
-                  className="flex-1 py-3.5 text-xs tracking-[0.2em] uppercase transition-colors duration-150 relative"
-                  style={{ color: rightTab === tab ? 'var(--text-secondary)' : 'var(--text-muted)' }}
+            {/* ═══════════════════════════════════════
+               CENTER COLUMN — Avatar + Speech + Mic
+            ═══════════════════════════════════════ */}
+            <div className="relative flex flex-col flex-[0_0_60%] h-full overflow-hidden">
+              
+              {/* Top right controls */}
+              <div className="absolute top-4 right-4 z-20 flex items-center gap-4">
+                {sessionStartedAt > 0 && (
+                  <SessionTimer
+                    startedAt={sessionStartedAt}
+                    maxSeconds={300}
+                    onWarning={() => setTimeWarning('warning')}
+                    onCritical={() => setTimeWarning('critical')}
+                  />
+                )}
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleFinishClick}
+                  disabled={pageState !== 'connected'}
+                  className="group"
                 >
-                  {tab === 'story' ? 'Story So Far' : 'Transcript'}
-                  {rightTab === tab && (
-                    <div className="absolute bottom-0 left-4 right-4 h-px" style={{ background: 'var(--accent-amber)' }} />
-                  )}
-                  {tab === 'story' && rightTab !== 'story' && Object.values(extraction).some(v => v !== null) && (
-                    <span
-                      className="absolute top-2.5 right-4 h-1.5 w-1.5 rounded-full"
-                      style={{ background: 'var(--accent-green)' }}
-                    />
-                  )}
-                </button>
-              ))}
-            </div>
+                  Finish <ArrowRight className="w-3 h-3 inline-block transition-transform duration-200 group-hover:translate-x-1" />
+                </Button>
+              </div>
 
-            {/* Tab content */}
-            <div className="flex-1 overflow-hidden">
-              {rightTab === 'transcript' ? (
-                <TranscriptPanel entries={transcript} />
-              ) : (
-                <StoryPanel extraction={extraction} isExtracting={isExtracting} />
+              {/* Time warning banners */}
+              {timeWarning === 'warning' && (
+                <div className="absolute top-16 left-0 right-0 flex justify-center z-20 slide-up">
+                  <div className="px-4 py-2 rounded text-xs"
+                    style={{ background: 'rgba(255,250,240,0.97)', border: '1px solid var(--accent-warm)', color: 'var(--accent-warm)' }}>
+                    About 1 minute remaining — start wrapping up
+                  </div>
+                </div>
               )}
+              {timeWarning === 'critical' && (
+                <div className="absolute top-16 left-0 right-0 flex justify-center z-20 slide-up">
+                  <div className="px-4 py-2 rounded text-xs timer-flash"
+                    style={{ background: 'rgba(255,245,245,0.97)', border: '1px solid var(--accent-red)', color: 'var(--accent-red)' }}>
+                    30 seconds remaining — finish soon
+                  </div>
+                </div>
+              )}
+
+              {/* Avatar container with rings */}
+              <div className="flex-1 flex flex-col items-center justify-center relative">
+                
+                {/* Circular rings behind avatar */}
+                <div className="absolute flex items-center justify-center pointer-events-none">
+                  <div 
+                    className="rounded-full border avatar-ring-outer"
+                    style={{ 
+                      width: 340, height: 340, 
+                      borderColor: 'var(--border-standard)',
+                      borderWidth: 1,
+                      opacity: 0.4,
+                    }} 
+                  />
+                  <div 
+                    className="absolute rounded-full border avatar-ring-mid"
+                    style={{ 
+                      width: 300, height: 300, 
+                      borderColor: 'var(--border-standard)',
+                      borderWidth: 1,
+                      opacity: 0.5,
+                    }} 
+                  />
+                  <div 
+                    className="absolute rounded-full border avatar-ring-inner"
+                    style={{ 
+                      width: 260, height: 260, 
+                      borderColor: 'var(--border-emphasis)',
+                      borderWidth: 1,
+                      opacity: 0.6,
+                    }} 
+                  />
+                </div>
+
+                {/* Avatar video — circular mask */}
+                <div 
+                  className="relative rounded-full overflow-hidden z-10"
+                  style={{ width: 220, height: 220, border: '2px solid var(--border-standard)' }}
+                >
+                  <AvatarView
+                    credentials={credentials}
+                    onTranscriptUpdate={handleTranscriptUpdate}
+                    onMicStateChange={handleMicStateChange}
+                    onSessionEnded={handleSessionEnded}
+                    onSessionActive={handleSessionActive}
+                  />
+                </div>
+
+                {/* Name label */}
+                <div className="mt-6 text-center z-10">
+                  <p className="text-xl font-display" style={{ color: 'var(--text-primary)' }}>
+                    Hank
+                  </p>
+                  <p className="text-[10px] tracking-[0.25em] uppercase font-slate mt-1" style={{ color: 'var(--text-muted)' }}>
+                    Story Consultant · AI
+                  </p>
+                </div>
+
+                {/* Speech bubble */}
+                {latestEntry && (
+                  <div className="mt-8 w-full max-w-md px-8 z-10">
+                    <div 
+                      className="rounded-lg border p-4 speech-bubble relative"
+                      style={{ 
+                        borderColor: latestEntry.speaker === 'HANK' ? 'rgba(170,136,68,0.25)' : 'var(--border-subtle)',
+                        background: 'var(--surface-1)',
+                        borderLeftWidth: 3,
+                        borderLeftColor: latestEntry.speaker === 'HANK' ? 'var(--accent-amber)' : 'var(--text-muted)',
+                      }}
+                    >
+                      <p className="text-[10px] tracking-[0.2em] uppercase mb-2 font-slate" style={{ color: latestEntry.speaker === 'HANK' ? 'var(--accent-amber)' : 'var(--text-muted)' }}>
+                        {latestEntry.speaker === 'HANK' ? 'Hank' : 'You'}
+                      </p>
+                      <p className="text-sm font-light leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+                        "{latestEntry.text}"
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Bottom mic bar */}
+              <div 
+                className="flex-none flex items-center justify-center px-8 py-5 border-t"
+                style={{ borderColor: 'var(--border-subtle)', background: 'var(--surface-1)' }}
+              >
+                <div className="flex items-center gap-4 w-full max-w-lg">
+                  {/* Mic button */}
+                  <button
+                    className="relative flex-none w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200"
+                    style={{ 
+                      background: micActive && !micMuted 
+                        ? 'var(--accent-green)' 
+                        : micMuted 
+                          ? 'var(--surface-2)' 
+                          : 'var(--surface-2)',
+                      color: micActive && !micMuted ? '#fff' : 'var(--text-muted)',
+                      border: `2px solid ${micActive && !micMuted ? 'var(--accent-green)' : 'var(--border-standard)'}`,
+                    }}
+                  >
+                    <Mic className="w-5 h-5" />
+                    {micActive && !micMuted && isSpeaking && (
+                      <div 
+                        className="absolute inset-0 rounded-full mic-ring-pulse"
+                        style={{ border: '2px solid var(--accent-green)' }}
+                      />
+                    )}
+                  </button>
+
+                  {/* Input pill */}
+                  <div 
+                    className="flex-1 flex items-center gap-3 rounded-full px-5 py-3"
+                    style={{ 
+                      background: 'var(--canvas)', 
+                      border: '1px solid var(--border-standard)',
+                    }}
+                  >
+                    <p className="text-sm flex-1" style={{ color: 'var(--text-muted)' }}>
+                      {isSpeaking 
+                        ? 'Listening...' 
+                        : micActive && !micMuted 
+                          ? 'Speak or type your response...' 
+                          : 'Click mic to start speaking'}
+                    </p>
+                    <button
+                      className="w-8 h-8 rounded-full flex items-center justify-center transition-all duration-150"
+                      style={{ 
+                        background: micActive ? 'var(--text-primary)' : 'var(--surface-2)',
+                        color: micActive ? 'var(--canvas)' : 'var(--text-muted)',
+                      }}
+                    >
+                      <ArrowUp className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
-          </div>
 
-          {/* Bottom bar — clapperboard style */}
-          <div
-            className="absolute bottom-0 left-0 right-0 flex items-center justify-between border-t px-8 py-4"
-            style={{ borderColor: 'var(--border-subtle)', background: 'rgba(8,8,8,0.97)' }}
-          >
-            <WaveformIndicator
-              isActive={micActive}
-              isMuted={micMuted}
-              isSpeaking={isSpeaking}
-            />
-
-            <Button
-              variant="primary"
-              size="md"
-              onClick={handleFinishClick}
-              disabled={pageState !== 'connected'}
-              className="group"
+            {/* ═══════════════════════════════════════
+               RIGHT COLUMN — Transcript
+            ═══════════════════════════════════════ */}
+            <div
+              className="flex flex-[0_0_40%] flex-col h-full border-l overflow-hidden"
+              style={{ borderColor: 'var(--border-subtle)', background: 'var(--canvas)' }}
             >
-              Finish &amp; Generate Script <ArrowRight className="w-3 h-3 inline-block transition-transform duration-200 group-hover:translate-x-1" />
-            </Button>
+              <TranscriptPanel entries={transcript} />
+            </div>
           </div>
         </div>
-      </div>
       )}
 
       {/* Runway attribution */}
