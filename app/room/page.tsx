@@ -46,6 +46,7 @@ export default function RoomPage() {
   const [timeWarning, setTimeWarning] = useState<'none' | 'warning' | 'critical'>('none')
 
   const [typedQuote, setTypedQuote] = useState('')
+  const loadStartRef = useRef<number>(Date.now())
 
   const [extraction, setExtraction] = useState<StoryExtraction>({
     character: null, setting: null, tone: null, action: null, arc: null,
@@ -58,19 +59,24 @@ export default function RoomPage() {
     document.title = "Story | Director's Room"
   }, [])
 
-  // Typewriter effect — starts at 55s elapsed, types Hank's opening line
+  // Typewriter effect — starts at 55s wall-clock elapsed
   useEffect(() => {
     if (elapsed < 55 || pageState !== 'loading') return
     if (typedQuote.length >= HANK_OPENING.length) return
     const t = setTimeout(() => {
       setTypedQuote(HANK_OPENING.slice(0, typedQuote.length + 1))
-    }, 28) // ~28ms per character ≈ comfortable reading speed
+    }, 28)
     return () => clearTimeout(t)
   }, [elapsed, typedQuote, pageState])
 
+  // Elapsed ticker — uses wall clock so StrictMode double-fire can't inflate it
   useEffect(() => {
     if (pageState !== 'loading') return
-    const t = setInterval(() => setElapsed(s => s + 1), 1000)
+    loadStartRef.current = Date.now()
+    setElapsed(0)
+    const t = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - loadStartRef.current) / 1000))
+    }, 1000)
     return () => clearInterval(t)
   }, [pageState])
 
