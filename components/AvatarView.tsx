@@ -83,13 +83,13 @@ function AvatarCallUI({ onTranscriptUpdate, onMicStateChange, onEnd, onActive, s
         className="pointer-events-none absolute inset-0"
         style={{
           background:
-            'radial-gradient(ellipse 80% 80% at 50% 50%, transparent 40%, rgba(8,8,8,0.6) 100%)',
+            'radial-gradient(ellipse 80% 80% at 50% 50%, transparent 40%, rgba(0,0,0,0.08) 100%)',
         }}
       />
 
       {/* Connecting state overlay */}
       {state === 'connecting' && (
-        <div className="absolute inset-0 flex items-center justify-center bg-[#080808]">
+        <div className="absolute inset-0 flex items-center justify-center bg-[var(--surface-1)]">
           <p className="text-xs tracking-[0.3em] uppercase breathe" style={{ color: '#3a3a3a' }}>
             Connecting...
           </p>

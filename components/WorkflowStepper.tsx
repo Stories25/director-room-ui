@@ -58,7 +58,7 @@ export default function WorkflowStepper({ current, projectId }: WorkflowStepperP
                 isUpcoming ? 'opacity-60 hover:opacity-100 cursor-pointer' : 'cursor-pointer'
               } ${isCurrent ? 'ring-1' : ''}`}
               style={{
-                background: isCurrent ? 'rgba(170,136,68,0.08)' : 'transparent',
+                background: isCurrent ? 'rgba(170,136,68,0.10)' : 'transparent',
                 color: isCurrent ? 'var(--accent-amber)' : isCompleted ? 'var(--text-tertiary)' : 'var(--text-muted)',
                 borderColor: isCurrent ? 'rgba(170,136,68,0.3)' : 'transparent',
                 borderWidth: isCurrent ? 1 : 0,

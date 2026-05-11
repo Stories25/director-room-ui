@@ -200,14 +200,14 @@ function TimelineSvg({
         <rect
           key={y}
           x={LW} y={y} width={TW} height={h}
-          fill="rgba(255,255,255,0.013)" rx={2}
+          fill="rgba(0,0,0,0.013)" rx={2}
         />
       ))}
 
       {/* Row top separators */}
       {[ROW.ruler, ROW.wave, ROW.shots, ROW.energy, ROW.vol].map(({ y }) => (
         <line key={y} x1={LW} y1={y} x2={LW + TW} y2={y}
-          stroke="rgba(255,255,255,0.06)" strokeWidth={0.5} />
+          stroke="rgba(0,0,0,0.06)" strokeWidth={0.5} />
       ))}
 
       {/* Row labels */}
@@ -267,8 +267,8 @@ function TimelineSvg({
             <rect
               x={x1 + 0.75} y={ROW.shots.y + 2}
               width={w} height={ROW.shots.h - 4}
-              fill={active ? GOLD_DIM : 'rgba(255,255,255,0.02)'}
-              stroke={active ? GOLD : 'rgba(255,255,255,0.06)'}
+              fill={active ? GOLD_DIM : 'rgba(0,0,0,0.02)'}
+              stroke={active ? GOLD : 'rgba(0,0,0,0.06)'}
               strokeWidth={active ? 1 : 0.5}
               rx={2}
             />
@@ -663,7 +663,7 @@ export default function SoundPage() {
           style={{ background: 'radial-gradient(ellipse 70% 60% at 50% 50%, rgba(200,146,28,0.04) 0%, transparent 70%)' }}>
           <div
             className="w-16 h-16 rounded-full border flex items-center justify-center"
-            style={{ borderColor: 'var(--border-emphasis)', background: 'rgba(255,255,255,0.03)' }}
+            style={{ borderColor: 'var(--border-emphasis)', background: 'rgba(0,0,0,0.03)' }}
           >
             <Volume2 className="w-7 h-7" style={{ color: 'var(--text-tertiary)' }} />
           </div>
@@ -766,7 +766,7 @@ export default function SoundPage() {
           {/* Error banner */}
           {error && (
             <div className="mb-6 rounded border px-4 py-3 flex items-center gap-3"
-              style={{ borderColor: 'rgba(204,68,68,0.2)', background: 'rgba(204,68,68,0.05)' }}>
+            style={{ borderColor: 'rgba(204,68,68,0.25)', background: 'rgba(204,68,68,0.07)' }}>
               <AlertCircle className="w-4 h-4 flex-none" style={{ color: 'var(--accent-red)' }} />
               <p className="text-xs flex-1" style={{ color: 'var(--accent-red)' }}>{error}</p>
               <Button variant="tertiary" size="sm" onClick={() => setError(null)}>Dismiss</Button>

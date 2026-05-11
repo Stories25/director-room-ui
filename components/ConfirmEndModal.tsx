@@ -73,7 +73,7 @@ export default function ConfirmEndModal({ extraction, onConfirm, onCancel }: Con
 
         {/* Warning */}
         {missing.length > 0 && (
-          <div className="rounded border px-4 py-3" style={{ borderColor: 'rgba(170,136,68,0.2)', background: 'rgba(170,136,68,0.05)' }}>
+          <div className="rounded border px-4 py-3" style={{ borderColor: 'rgba(170,136,68,0.25)', background: 'rgba(170,136,68,0.07)' }}>
             <p className="text-xs" style={{ color: 'var(--accent-warm)' }}>
               {missing.length} area{missing.length > 1 ? 's' : ''} not yet discussed:{' '}
               {missing.map(k => FIELD_LABELS[k]).join(', ')}.

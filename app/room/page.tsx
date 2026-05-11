@@ -331,11 +331,11 @@ export default function RoomPage() {
           className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-10"
           style={{
             background: 'var(--canvas)',
-            backgroundImage: 'radial-gradient(ellipse 70% 60% at 50% 45%, rgba(170,136,68,0.04) 0%, transparent 70%)',
+            backgroundImage: 'radial-gradient(ellipse 70% 60% at 50% 45%, rgba(170,136,68,0.06) 0%, transparent 70%)',
           }}
         >
           {/* Film grain overlay — same as connected room */}
-          <div className="pointer-events-none absolute inset-0" style={{ opacity: 0.025,
+          <div className="pointer-events-none absolute inset-0" style={{ opacity: 0.012,
             backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E")`,
             backgroundRepeat: 'repeat', backgroundSize: '128px 128px',
           }} />
@@ -534,7 +534,7 @@ export default function RoomPage() {
           {/* Bottom bar — clapperboard style */}
           <div
             className="absolute bottom-0 left-0 right-0 flex items-center justify-between border-t px-8 py-4"
-            style={{ borderColor: 'var(--border-subtle)', background: 'rgba(8,8,8,0.97)' }}
+            style={{ borderColor: 'var(--border-subtle)', background: 'var(--surface-1)' }}
           >
             <WaveformIndicator
               isActive={micActive}

@@ -77,7 +77,7 @@ export default function ScriptPage() {
 
           {pageState === 'error' && (
             <div className="mb-8 rounded border px-4 py-3 space-y-2"
-              style={{ borderColor: 'rgba(204,68,68,0.2)', background: 'rgba(204,68,68,0.05)' }}>
+              style={{ borderColor: 'rgba(204,68,68,0.25)', background: 'rgba(204,68,68,0.07)' }}>
               <p className="text-xs" style={{ color: 'var(--accent-red)' }}>{error}</p>
               <Button variant="tertiary" size="sm" onClick={handleSend}>
                 Retry <ArrowRight className="w-3 h-3 inline-block" />
