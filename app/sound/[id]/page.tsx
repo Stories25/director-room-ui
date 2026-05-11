@@ -1,18 +1,16 @@
 'use client'
 
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import {
-  Play, ArrowRight, ArrowLeft, Check,
-  Download, AlertCircle, RefreshCw, Music,
+  Play, ArrowRight, ArrowLeft, Loader2, Check,
+  Download, AlertCircle, RefreshCw, Music, Volume2,
 } from 'lucide-react'
 import type { Bgm, BgmTimestamp } from '@/lib/types'
 import { Sprocket, TopBar } from '@/components/shell/Shell'
 import WorkflowStepper from '@/components/WorkflowStepper'
 import Button from '@/components/ui/Button'
-
-// ─── Dynamic note colours ─────────────────────────────────────────────────────
 
 const NOTE_COLORS: Record<string, string> = {
   INTRO: 'rgba(170,136,68,0.35)',
@@ -22,8 +20,6 @@ const NOTE_COLORS: Record<string, string> = {
   FADE:  'rgba(170,136,68,0.25)',
 }
 const NOTE_COLOR_DEFAULT = 'rgba(170,136,68,0.4)'
-
-// ─── Waveform — client-only (avoids SSR/hydration mismatch on Math.sin) ───────
 
 function generateWaveform(seed: number, bars = 48): number[] {
   const out: number[] = []
@@ -62,59 +58,6 @@ function WaveformInner({ seed, animate, height = 48 }: {
 }
 
 const Waveform = dynamic(() => Promise.resolve(WaveformInner), { ssr: false })
-
-// ─── Generating view — client-only ────────────────────────────────────────────
-
-function GeneratingViewInner({ elapsed, label, title }: {
-  elapsed: number; label: string; title?: string
-}) {
-  const estimate = Math.max(0, 60 - elapsed)
-  const bars = generateWaveform(42, 56)
-
-  return (
-    <div className="flex-1 flex flex-col items-center justify-center gap-10">
-      <div className="flex items-end gap-[3px]" style={{ height: 96 }}>
-        {bars.map((h, i) => (
-          <div
-            key={i}
-            className="breathe"
-            style={{
-              width: '4px',
-              height: `${(h * 100).toFixed(2)}%`,
-              background: 'var(--accent-amber)',
-              borderRadius: '2px',
-              opacity: 0.6,
-              animationDelay: `${i * 45}ms`,
-              animationDuration: `${(1.8 + (i % 4) * 0.3).toFixed(1)}s`,
-            }}
-          />
-        ))}
-      </div>
-
-      <div className="text-center space-y-3">
-        {title && (
-          <p className="text-lg font-display font-light" style={{ color: 'var(--text-primary)' }}>
-            {title}
-          </p>
-        )}
-        <p className="text-sm font-light breathe" style={{ color: 'var(--text-secondary)' }}>
-          {label}
-        </p>
-        <p className="text-xs font-slate" style={{ color: 'var(--text-muted)' }}>
-          ElevenLabs is scoring your teaser via Runway
-        </p>
-      </div>
-
-      <p className="text-[10px] font-slate tabular-nums" style={{ color: 'var(--text-muted)' }}>
-        {elapsed < 5 ? 'This takes about 60 seconds' : `~${estimate}s remaining`}
-      </p>
-    </div>
-  )
-}
-
-const GeneratingView = dynamic(() => Promise.resolve(GeneratingViewInner), { ssr: false })
-
-// ─── Timeline row ─────────────────────────────────────────────────────────────
 
 function TimelineRow({ ts, isLast }: { ts: BgmTimestamp; isLast: boolean }) {
   const duration = ((ts.end_ms - ts.start_ms) / 1000).toFixed(1)
@@ -175,9 +118,80 @@ function TimelineRow({ ts, isLast }: { ts: BgmTimestamp; isLast: boolean }) {
   )
 }
 
-// ─── Ready view ───────────────────────────────────────────────────────────────
+function BgmTrackCard({
+  bgm, index, isSelected, isApproved, onSelect,
+}: {
+  bgm: Bgm
+  index: number
+  isSelected: boolean
+  isApproved: boolean
+  onSelect: () => void
+}) {
+  const durationSec = (bgm.duration_ms / 1000).toFixed(0)
+  const waveformSeed = bgm.id.split('').reduce((a, c) => a + c.charCodeAt(0), 0)
 
-function ReadyView({
+  return (
+    <button
+      onClick={onSelect}
+      className="w-full text-left rounded border transition-all duration-200"
+      style={{
+        borderColor: isSelected ? 'var(--accent-amber)' : 'var(--border-standard)',
+        background: isSelected ? 'rgba(170,136,68,0.04)' : 'var(--surface-1)',
+        boxShadow: isSelected ? '0 0 0 1px var(--accent-amber)' : 'none',
+      }}
+    >
+      <div className="px-4 py-3">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <span
+              className="text-[9px] font-slate px-1.5 py-0.5 rounded border"
+              style={{
+                color: isSelected ? 'var(--accent-amber)' : 'var(--text-muted)',
+                borderColor: isSelected ? 'rgba(170,136,68,0.4)' : 'var(--border-subtle)',
+                background: isSelected ? 'rgba(170,136,68,0.08)' : 'transparent',
+              }}
+            >
+              Track {index + 1}
+            </span>
+            {isApproved && isSelected && (
+              <span className="flex items-center gap-1 text-[9px] font-slate"
+                style={{ color: 'var(--accent-green)' }}>
+                <Check className="w-2.5 h-2.5" /> Approved
+              </span>
+            )}
+          </div>
+          <span className="text-[10px] font-slate tabular-nums"
+            style={{ color: 'var(--text-muted)' }}>
+            {durationSec}s
+          </span>
+        </div>
+
+        <div className="mb-2">
+          <Waveform seed={waveformSeed} animate={isSelected} height={28} />
+        </div>
+
+        <p className="text-[11px] font-light leading-relaxed italic"
+          style={{ color: 'var(--text-muted)' }}>
+          {bgm.prompt}
+        </p>
+
+        {bgm.timestamps.length > 0 && (
+          <div className="flex items-center gap-2 mt-2">
+            <span className="text-[9px] font-slate" style={{ color: 'var(--text-muted)' }}>
+              {bgm.timestamps.length} shots
+            </span>
+            <span style={{ color: 'var(--border-subtle)' }}>·</span>
+            <span className="text-[9px] font-slate" style={{ color: 'var(--text-muted)' }}>
+              Peak at {bgm.timestamps.find(t => t.dynamic_note === 'PEAK')?.shot_id ?? '—'}
+            </span>
+          </div>
+        )}
+      </div>
+    </button>
+  )
+}
+
+function BgmDetailView({
   bgm, videoThumbnail, approved, onApprove, onRegenerate,
 }: {
   bgm: Bgm
@@ -189,18 +203,9 @@ function ReadyView({
   const durationSec = (bgm.duration_ms / 1000).toFixed(0)
 
   return (
-    <div style={{ maxWidth: 800, margin: '0 auto', paddingTop: 40, paddingBottom: 100, paddingLeft: 40, paddingRight: 40 }}>
+    <div className="space-y-6">
 
-      <div className="mb-8">
-        <p className="text-[10px] tracking-[0.25em] uppercase font-slate mb-1.5"
-          style={{ color: 'var(--text-muted)' }}>Step 5 of 5</p>
-        <h1 className="text-2xl font-display font-light" style={{ color: 'var(--text-primary)' }}>
-          Sound Engineering
-        </h1>
-      </div>
-
-      {/* Video preview */}
-      <div className="rounded border overflow-hidden mb-6"
+      <div className="rounded border overflow-hidden"
         style={{ borderColor: 'var(--border-standard)', background: 'var(--canvas)' }}>
         <div className="relative w-full" style={{ aspectRatio: '16/9', background: 'var(--surface-2)' }}>
           {videoThumbnail ? (
@@ -227,7 +232,6 @@ function ReadyView({
           </div>
         </div>
 
-        {/* Waveform strip */}
         <div className="px-6 py-4 border-t flex items-center gap-4"
           style={{ borderColor: 'var(--border-subtle)', background: 'var(--surface-1)' }}>
           <div className="flex-1">
@@ -240,8 +244,7 @@ function ReadyView({
         </div>
       </div>
 
-      {/* Native audio player */}
-      <div className="mb-8 space-y-3">
+      <div className="space-y-3">
         <audio controls src={bgm.url} className="w-full"
           style={{ height: 36, colorScheme: 'dark' as React.CSSProperties['colorScheme'] }} />
         <div className="flex items-start gap-2">
@@ -254,9 +257,8 @@ function ReadyView({
         </div>
       </div>
 
-      {/* Shot timeline */}
       {bgm.timestamps.length > 0 && (
-        <div className="mb-8">
+        <div>
           <div className="flex items-center gap-3 mb-3">
             <p className="text-[10px] tracking-[0.25em] uppercase font-slate"
               style={{ color: 'var(--text-muted)' }}>
@@ -293,7 +295,6 @@ function ReadyView({
         </div>
       )}
 
-      {/* Actions */}
       <div className="flex items-center justify-between pt-4 border-t"
         style={{ borderColor: 'var(--border-subtle)' }}>
         <Button variant="secondary" size="sm" onClick={onRegenerate} disabled={approved}>
@@ -323,29 +324,6 @@ function ReadyView({
   )
 }
 
-function sleep(ms: number) { return new Promise<void>(r => setTimeout(r, ms)) }
-
-async function pollForBgm(
-  projectId: string,
-  onElapsed: (n: number) => void,
-  maxAttempts = 24,
-): Promise<Bgm> {
-  for (let i = 0; i < maxAttempts; i++) {
-    await sleep(5000)
-    onElapsed((i + 1) * 5)
-    const res = await fetch(`/api/projects/${projectId}`)
-    if (!res.ok) continue
-    const { project } = await res.json()
-    const bgms = project?.bgms
-    if (bgms && bgms.length > 0) return bgms[bgms.length - 1]
-  }
-  throw new Error('Music generation timed out — please try again')
-}
-
-// ─── Page ─────────────────────────────────────────────────────────────────────
-
-type PageState = 'loading' | 'idle' | 'generating' | 'polling' | 'ready' | 'error'
-
 function getFirstVideoThumbnail(shots: Record<string, { image?: { active: number; generations: { url: string; version: number }[] } }>): string | null {
   const keys = Object.keys(shots).sort((a, b) => {
     const [aS, aF] = a.split('.').map(Number)
@@ -365,6 +343,8 @@ function getFirstVideoThumbnail(shots: Record<string, { image?: { active: number
   return null
 }
 
+type PageState = 'loading' | 'idle' | 'generating' | 'ready' | 'error'
+
 export default function SoundPage() {
   const router    = useRouter()
   const params    = useParams()
@@ -372,12 +352,14 @@ export default function SoundPage() {
 
   const [projectTitle,   setProjectTitle]   = useState<string | null>(null)
   const [videoThumbnail, setVideoThumbnail] = useState<string | null>(null)
-  const [bgm,            setBgm]            = useState<Bgm | null>(null)
+  const [bgms,           setBgms]           = useState<Bgm[]>([])
+  const [activeBgmId,    setActiveBgmId]    = useState<string | null>(null)
   const [pageState,      setPageState]      = useState<PageState>('loading')
   const [error,          setError]          = useState<string | null>(null)
   const [approved,       setApproved]       = useState(false)
-  const [elapsed,        setElapsed]        = useState(0)
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [isGenerating,   setIsGenerating]   = useState(false)
+
+  const activeBgm = bgms.find(b => b.id === activeBgmId) ?? bgms[bgms.length - 1] ?? null
 
   useEffect(() => {
     if (projectTitle) {
@@ -387,21 +369,12 @@ export default function SoundPage() {
     }
   }, [projectTitle])
 
-  // ── Elapsed ticker ────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (pageState === 'generating' || pageState === 'polling') {
-      timerRef.current = setInterval(() => setElapsed(s => s + 1), 1000)
-    } else {
-      if (timerRef.current) clearInterval(timerRef.current)
-    }
-    return () => { if (timerRef.current) clearInterval(timerRef.current) }
-  }, [pageState])
-
-  // ── Generate + poll ───────────────────────────────────────────────────────
+  // ── Generate (sync API) ──────────────────────────────────────────────────
   const generate = useCallback(async () => {
+    if (isGenerating) return
+    setIsGenerating(true)
     setError(null)
-    setElapsed(0)
-    setPageState('generating')
+    setPageState(prev => bgms.length > 0 ? prev : 'generating')
     try {
       const res = await fetch('/api/sound/generate', {
         method: 'POST',
@@ -412,19 +385,23 @@ export default function SoundPage() {
         const { error: err } = await res.json().catch(() => ({}))
         throw new Error(err || `Generation failed (${res.status})`)
       }
-      setPageState('polling')
-      setElapsed(0)
-      const result = await pollForBgm(projectId, setElapsed)
-      setBgm(result)
+      const { bgms: newBgms } = await res.json()
+      if (newBgms && newBgms.length > 0) {
+        setBgms(prev => [...prev, ...newBgms])
+        setActiveBgmId(newBgms[newBgms.length - 1].id)
+        setApproved(false)
+      }
       setPageState('ready')
     } catch (err) {
       console.error('[sound] generate failed:', err)
       setError(String(err))
-      setPageState('error')
+      setPageState(bgms.length > 0 ? 'ready' : 'error')
+    } finally {
+      setIsGenerating(false)
     }
-  }, [projectId])
+  }, [projectId, bgms.length, isGenerating])
 
-  // ── Boot — fetch project from API, check for existing BGMs ────────────────
+  // ── Boot — fetch project, check for existing BGMs ─────────────────────────
   useEffect(() => {
     let cancelled = false
 
@@ -440,9 +417,10 @@ export default function SoundPage() {
           setVideoThumbnail(getFirstVideoThumbnail(project.storyboard.shots))
         }
 
-        const bgms = project?.bgms
-        if (bgms && bgms.length > 0) {
-          setBgm(bgms[bgms.length - 1])
+        const existingBgms: Bgm[] = project?.bgms ?? []
+        if (existingBgms.length > 0) {
+          setBgms(existingBgms)
+          setActiveBgmId(existingBgms[existingBgms.length - 1].id)
           setPageState('ready')
           return
         }
@@ -458,19 +436,14 @@ export default function SoundPage() {
 
     boot()
     return () => { cancelled = true }
-  }, [projectId, generate])
+  }, [projectId])
 
   const handleApprove = useCallback(() => setApproved(true), [])
 
   const handleRegenerate = useCallback(() => {
-    setBgm(null)
     setApproved(false)
     generate()
   }, [generate])
-
-  const generatingLabel = pageState === 'polling'
-    ? 'Waiting for soundtrack…'
-    : 'Composing soundtrack…'
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -484,10 +457,24 @@ export default function SoundPage() {
           { label: 'Video',    href: `/video/${projectId}` },
           { label: 'Sound',    current: true },
         ]}
+        rightAction={pageState !== 'loading' && (
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={generate}
+            disabled={isGenerating}
+          >
+            {isGenerating
+              ? <><Loader2 className="w-3 h-3 animate-spin" /> Generating…</>
+              : <><RefreshCw className="w-3 h-3" /> Generate New</>
+            }
+          </Button>
+        )}
       />
 
       <WorkflowStepper current="sound" projectId={projectId} />
 
+      {/* Loading */}
       {pageState === 'loading' && (
         <div className="flex-1 flex flex-col items-center justify-center gap-6">
           <div className="h-8 w-8 rounded-full border-t animate-spin"
@@ -496,6 +483,7 @@ export default function SoundPage() {
         </div>
       )}
 
+      {/* Idle — no tracks yet */}
       {pageState === 'idle' && (
         <div className="flex-1 flex flex-col items-center justify-center gap-8"
           style={{ background: 'radial-gradient(ellipse 70% 60% at 50% 50%, rgba(170,136,68,0.04) 0%, transparent 70%)' }}>
@@ -503,7 +491,7 @@ export default function SoundPage() {
             className="w-16 h-16 rounded-full border flex items-center justify-center"
             style={{ borderColor: 'var(--border-emphasis)', background: 'rgba(255,255,255,0.03)' }}
           >
-            <Music className="w-7 h-7 ml-0.5" style={{ color: 'var(--text-tertiary)' }} />
+            <Volume2 className="w-7 h-7" style={{ color: 'var(--text-tertiary)' }} />
           </div>
           <div className="text-center space-y-1">
             <p className="text-sm font-light" style={{ color: 'var(--text-secondary)' }}>No soundtrack yet</p>
@@ -517,11 +505,44 @@ export default function SoundPage() {
         </div>
       )}
 
-      {(pageState === 'generating' || pageState === 'polling') && (
-        <GeneratingView elapsed={elapsed} label={generatingLabel} title={projectTitle ?? undefined} />
+      {/* Generating (full page, only when no existing tracks) */}
+      {pageState === 'generating' && bgms.length === 0 && (
+        <div className="flex-1 flex flex-col items-center justify-center gap-10">
+          <div className="flex items-end gap-[3px]" style={{ height: 96 }}>
+            {generateWaveform(42, 56).map((h, i) => (
+              <div
+                key={i}
+                className="breathe"
+                style={{
+                  width: '4px',
+                  height: `${(h * 100).toFixed(2)}%`,
+                  background: 'var(--accent-amber)',
+                  borderRadius: '2px',
+                  opacity: 0.6,
+                  animationDelay: `${i * 45}ms`,
+                  animationDuration: `${(1.8 + (i % 4) * 0.3).toFixed(1)}s`,
+                }}
+              />
+            ))}
+          </div>
+          <div className="text-center space-y-3">
+            {projectTitle && (
+              <p className="text-lg font-display font-light" style={{ color: 'var(--text-primary)' }}>
+                {projectTitle}
+              </p>
+            )}
+            <p className="text-sm font-light breathe" style={{ color: 'var(--text-secondary)' }}>
+              Composing soundtrack…
+            </p>
+            <p className="text-xs font-slate" style={{ color: 'var(--text-muted)' }}>
+              ElevenLabs is scoring your teaser via Runway
+            </p>
+          </div>
+        </div>
       )}
 
-      {pageState === 'error' && (
+      {/* Error */}
+      {pageState === 'error' && bgms.length === 0 && (
         <div className="flex-1 flex flex-col items-center justify-center gap-6">
           <div className="flex items-center gap-3 px-4 py-3 rounded border"
             style={{ borderColor: 'rgba(204,68,68,0.2)', background: 'rgba(204,68,68,0.05)' }}>
@@ -534,18 +555,70 @@ export default function SoundPage() {
         </div>
       )}
 
-      {pageState === 'ready' && bgm && (
+      {/* Ready — track list + detail */}
+      {pageState === 'ready' && bgms.length > 0 && (
         <div className="flex-1 overflow-y-auto w-full">
-          <ReadyView
-            bgm={bgm}
-            videoThumbnail={videoThumbnail}
-            approved={approved}
-            onApprove={handleApprove}
-            onRegenerate={handleRegenerate}
-          />
+          <div style={{ maxWidth: 800, margin: '0 auto', paddingTop: 32, paddingBottom: 100, paddingLeft: 40, paddingRight: 40 }}>
+
+            <div className="mb-6">
+              <p className="text-[10px] tracking-[0.25em] uppercase font-slate mb-1.5"
+                style={{ color: 'var(--text-muted)' }}>Step 5 of 5</p>
+              <h1 className="text-2xl font-display font-light" style={{ color: 'var(--text-primary)' }}>
+                Sound Engineering
+              </h1>
+            </div>
+
+            {error && (
+              <div className="mb-6 rounded border px-4 py-3 flex items-center gap-3"
+                style={{ borderColor: 'rgba(204,68,68,0.2)', background: 'rgba(204,68,68,0.05)' }}>
+                <AlertCircle className="w-4 h-4 flex-none" style={{ color: 'var(--accent-red)' }} />
+                <p className="text-xs flex-1" style={{ color: 'var(--accent-red)' }}>{error}</p>
+                <Button variant="tertiary" size="sm" onClick={() => setError(null)}>Dismiss</Button>
+              </div>
+            )}
+
+            {bgms.length > 1 && (
+              <div className="mb-6">
+                <div className="flex items-center gap-3 mb-3">
+                  <p className="text-[10px] tracking-[0.25em] uppercase font-slate"
+                    style={{ color: 'var(--text-muted)' }}>
+                    Tracks
+                  </p>
+                  <div className="flex-1 h-px" style={{ background: 'var(--border-subtle)' }} />
+                  <span className="text-[10px] font-slate" style={{ color: 'var(--text-muted)' }}>
+                    {bgms.length} generation{bgms.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
+                <div className="grid gap-3"
+                  style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))' }}>
+                  {bgms.map((b, i) => (
+                    <BgmTrackCard
+                      key={b.id}
+                      bgm={b}
+                      index={i}
+                      isSelected={b.id === activeBgmId}
+                      isApproved={approved}
+                      onSelect={() => { setActiveBgmId(b.id); setApproved(false) }}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {activeBgm && (
+              <BgmDetailView
+                bgm={activeBgm}
+                videoThumbnail={videoThumbnail}
+                approved={approved}
+                onApprove={handleApprove}
+                onRegenerate={handleRegenerate}
+              />
+            )}
+          </div>
         </div>
       )}
 
+      {/* Bottom bar */}
       {(pageState === 'idle' || pageState === 'ready' || pageState === 'error') && (
         <div className="flex-none w-full border-t"
           style={{ borderColor: 'var(--border-subtle)', background: 'var(--surface-1)' }}>

@@ -6,8 +6,7 @@ import { generateMusic } from '@/lib/argon'
  * Body: { projectId: string }
  *
  * Proxies to POST /runway/projects/:id/storyboard/music on Argon.
- * The actual BGM result is returned asynchronously — poll GET /api/projects/:id
- * until project.bgms is non-empty.
+ * The API is synchronous — returns new BGM tracks directly.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -15,12 +14,12 @@ export async function POST(request: NextRequest) {
     if (!projectId) {
       return NextResponse.json({ error: 'Missing projectId' }, { status: 400 })
     }
-    await generateMusic(projectId)
-    return NextResponse.json({ ok: true })
+    const bgms = await generateMusic(projectId)
+    return NextResponse.json({ bgms })
   } catch (error) {
     console.error('[sound/generate] Error:', error)
     return NextResponse.json(
-      { error: 'Failed to trigger music generation', details: String(error) },
+      { error: 'Failed to generate music', details: String(error) },
       { status: 500 }
     )
   }
