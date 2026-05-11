@@ -21,15 +21,15 @@ const GOLD_DIM    = 'rgba(200,146,28,0.14)'
 const VW   = 680
 const LW   = 52    // label column width
 const TW   = VW - LW - 8
-const SVG_H = 306
+const SVG_H = 380
 
 const ROW = {
-  ruler:  { y: 0,   h: 22 },
-  wave:   { y: 32,  h: 54 },
-  shots:  { y: 100, h: 42 },
-  energy: { y: 156, h: 46 },
-  stage:  { y: 214, h: 24 },
-  vol:    { y: 248, h: 52 },
+  ruler:  { y: 0,   h: 24 },
+  wave:   { y: 40,  h: 68 },
+  shots:  { y: 126, h: 48 },
+  energy: { y: 192, h: 56 },
+  stage:  { y: 264, h: 28 },
+  vol:    { y: 306, h: 64 },
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
