@@ -107,6 +107,28 @@ export interface StoryboardResult {
   activeGrid: number
 }
 
+// ─── BGM (Background Music) types ───────────────────────────────────────────
+
+export interface BgmTimestamp {
+  shot_id: string
+  start_ms: number
+  end_ms: number
+  energy: number           // 1–5
+  volume: number           // 0.0–1.0
+  dynamic_note: string     // 'INTRO' | 'RISE' | 'PEAK' | 'FALL' | 'FADE'
+  emotional_beat: string
+  music_direction: string
+}
+
+export interface Bgm {
+  id: string
+  url: string              // direct .mp3, playable in <audio>
+  prompt: string
+  properties: Record<string, unknown>
+  timestamps: BgmTimestamp[]
+  duration_ms: number
+}
+
 // ─── Legacy video types (kept for argon.ts compat) ──────────────────────────
 
 export type VideoClipStatus = 'pending' | 'generating' | 'ready' | 'error'
