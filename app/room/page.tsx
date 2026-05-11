@@ -3,10 +3,8 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
-import { Check, ArrowRight, Mic, ArrowUp } from 'lucide-react'
-import TranscriptPanel from '@/components/TranscriptPanel'
-import StoryPanel, { StoryExtraction } from '@/components/StoryPanel'
-import WaveformIndicator from '@/components/WaveformIndicator'
+import { Check, ArrowRight } from 'lucide-react'
+import { StoryExtraction } from '@/components/StoryPanel'
 import SessionTimer from '@/components/SessionTimer'
 import ConfirmEndModal from '@/components/ConfirmEndModal'
 import { SessionCredentials, TranscriptEntry } from '@/lib/types'
@@ -50,7 +48,6 @@ export default function RoomPage() {
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([])
   const [micActive, setMicActive] = useState(false)
   const [micMuted, setMicMuted] = useState(false)
-  const [isSpeaking, setIsSpeaking] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [elapsed, setElapsed] = useState(0)
   const [sessionStartedAt, setSessionStartedAt] = useState<number>(0)
@@ -260,7 +257,6 @@ export default function RoomPage() {
 
   const handleTranscriptUpdate = useCallback((entry: TranscriptEntry) => {
     setTranscript(prev => [...prev, entry])
-    if (entry.speaker === 'YOU') setIsSpeaking(false)
   }, [])
 
   const handleMicStateChange = useCallback((active: boolean, muted: boolean) => {
@@ -268,16 +264,7 @@ export default function RoomPage() {
     setMicMuted(muted)
   }, [])
 
-  useEffect(() => {
-    const onSpeechStart = () => setIsSpeaking(true)
-    const onSpeechEnd   = () => setIsSpeaking(false)
-    window.addEventListener('director-speech-start', onSpeechStart)
-    window.addEventListener('director-speech-end',   onSpeechEnd)
-    return () => {
-      window.removeEventListener('director-speech-start', onSpeechStart)
-      window.removeEventListener('director-speech-end',   onSpeechEnd)
-    }
-  }, [])
+
 
   const handleFinishClick = useCallback(() => {
     setPageState('confirming')
@@ -316,83 +303,12 @@ export default function RoomPage() {
     }
   }, [transcript, router])
 
-  // ── Get the latest transcript entry for the speech bubble ──
-  const latestEntry = transcript.length > 0 ? transcript[transcript.length - 1] : null
+  // ── Is the session still provisioning? ──
+  const isProvisioning = pageState === 'loading'
 
   return (
     <main className="flex h-screen w-screen overflow-hidden" style={{ background: 'var(--canvas)' }}>
       <Sprocket />
-
-      {/* ── Loading state ── */}
-      {pageState === 'loading' && (
-        <div
-          className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-10"
-          style={{
-            background: 'var(--canvas)',
-            backgroundImage: 'radial-gradient(ellipse 70% 60% at 50% 45%, rgba(170,136,68,0.04) 0%, transparent 70%)',
-          }}
-        >
-          {/* Film grain overlay — same as connected room */}
-          <div className="pointer-events-none absolute inset-0" style={{ opacity: 0.025,
-            backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E")`,
-            backgroundRepeat: 'repeat', backgroundSize: '128px 128px',
-          }} />
-
-          {/* Step list */}
-          <div className="space-y-3 w-64">
-            {LOADING_STEPS.map((step, i) => {
-              const done = step.minElapsed < elapsed
-              const active = currentStep?.label === step.label
-              return (
-                <div key={i} className="flex items-center gap-3">
-                  <div
-                    className="h-1.5 w-1.5 rounded-full flex-none transition-all duration-500"
-                    style={{ background: done ? 'var(--accent-green)' : active ? 'var(--accent-amber)' : 'var(--text-muted)' }}
-                  />
-                  <p
-                    className={`text-xs transition-colors duration-500 ${active ? 'font-display' : 'font-slate'}`}
-                    style={{ color: done ? 'var(--text-tertiary)' : active ? 'var(--text-secondary)' : 'var(--text-muted)' }}
-                  >
-                    {step.label}
-                    {done && <Check className="w-3 h-3 inline ml-1.5" style={{ color: 'var(--accent-green)' }} />}
-                  </p>
-                </div>
-              )
-            })}
-          </div>
-
-          {/* Progress bar */}
-          <div className="w-64 h-px overflow-hidden" style={{ background: 'var(--surface-2)' }}>
-            <div
-              className="h-full transition-all duration-1000"
-              style={{ background: 'var(--accent-amber)', opacity: 0.6, width: `${loadingProgress}%` }}
-            />
-          </div>
-
-          <p className="text-xs font-slate" style={{ color: 'var(--text-muted)' }}>
-            {elapsed < 10 ? 'This takes about 60–90 seconds' : `~${Math.max(0, 90 - elapsed)}s remaining`}
-          </p>
-
-          {/* Rotating filmmaking facts — centered, keeps user engaged */}
-          <div className="flex flex-col items-center justify-center text-center px-6" style={{ maxWidth: 560 }}>
-            <p
-              className="text-[10px] font-slate tracking-[0.2em] uppercase mb-3"
-              style={{ color: 'var(--accent-amber)', opacity: 0.7 }}
-            >
-              Did you know?
-            </p>
-            <p
-              className="text-sm font-light leading-relaxed"
-              style={{
-                color: 'var(--text-secondary)',
-                minHeight: '3.5em',
-              }}
-            >
-              {FILMMAKING_FACTS[currentFactIndex]}
-            </p>
-          </div>
-        </div>
-      )}
 
       {/* ── Error state ── */}
       {pageState === 'error' && (
@@ -429,97 +345,146 @@ export default function RoomPage() {
         />
       )}
 
-      {/* ── Main layout ── */}
-      {(pageState === 'connected' || pageState === 'confirming' || pageState === 'finishing') && credentials && (
-        <div className="flex flex-col h-full w-full overflow-hidden">
-          <TopBar
-            breadcrumb={[{ label: 'Story', current: true }]}
-          />
-          <WorkflowStepper current="story" />
+      {/* ════════════════════════════════════════════════════════
+         MAIN LAYOUT — always visible, even while provisioning
+      ════════════════════════════════════════════════════════ */}
+      <div className="flex flex-col h-full w-full overflow-hidden">
+        <TopBar
+          breadcrumb={[{ label: 'Story', current: true }]}
+        />
+        <WorkflowStepper current="story" />
 
-          <div className="flex-1 flex overflow-hidden">
-            {/* ═══════════════════════════════════════
-               CENTER COLUMN — Avatar + Speech + Mic
-            ═══════════════════════════════════════ */}
-            <div className="relative flex flex-col flex-[0_0_60%] h-full overflow-hidden">
-              
-              {/* Top right controls */}
-              <div className="absolute top-4 right-4 z-20 flex items-center gap-4">
-                {sessionStartedAt > 0 && (
-                  <SessionTimer
-                    startedAt={sessionStartedAt}
-                    maxSeconds={300}
-                    onWarning={() => setTimeWarning('warning')}
-                    onCritical={() => setTimeWarning('critical')}
-                  />
-                )}
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={handleFinishClick}
-                  disabled={pageState !== 'connected'}
-                  className="group"
-                >
-                  Finish <ArrowRight className="w-3 h-3 inline-block transition-transform duration-200 group-hover:translate-x-1" />
-                </Button>
+        <div className="flex-1 relative overflow-hidden">
+          {/* Top right — timer */}
+          {!isProvisioning && sessionStartedAt > 0 && (
+            <div className="absolute top-4 right-6 z-20">
+              <SessionTimer
+                startedAt={sessionStartedAt}
+                maxSeconds={300}
+                onWarning={() => setTimeWarning('warning')}
+                onCritical={() => setTimeWarning('critical')}
+              />
+            </div>
+          )}
+
+          {/* Time warning banners */}
+          {timeWarning === 'warning' && (
+            <div className="absolute top-16 left-0 right-0 flex justify-center z-20 slide-up">
+              <div className="px-4 py-2 rounded text-xs"
+                style={{ background: 'rgba(255,250,240,0.97)', border: '1px solid var(--accent-warm)', color: 'var(--accent-warm)' }}>
+                About 1 minute remaining — start wrapping up
               </div>
+            </div>
+          )}
+          {timeWarning === 'critical' && (
+            <div className="absolute top-16 left-0 right-0 flex justify-center z-20 slide-up">
+              <div className="px-4 py-2 rounded text-xs timer-flash"
+                style={{ background: 'rgba(255,245,245,0.97)', border: '1px solid var(--accent-red)', color: 'var(--accent-red)' }}>
+                30 seconds remaining — finish soon
+              </div>
+            </div>
+          )}
 
-              {/* Time warning banners */}
-              {timeWarning === 'warning' && (
-                <div className="absolute top-16 left-0 right-0 flex justify-center z-20 slide-up">
-                  <div className="px-4 py-2 rounded text-xs"
-                    style={{ background: 'rgba(255,250,240,0.97)', border: '1px solid var(--accent-warm)', color: 'var(--accent-warm)' }}>
-                    About 1 minute remaining — start wrapping up
-                  </div>
-                </div>
-              )}
-              {timeWarning === 'critical' && (
-                <div className="absolute top-16 left-0 right-0 flex justify-center z-20 slide-up">
-                  <div className="px-4 py-2 rounded text-xs timer-flash"
-                    style={{ background: 'rgba(255,245,245,0.97)', border: '1px solid var(--accent-red)', color: 'var(--accent-red)' }}>
-                    30 seconds remaining — finish soon
-                  </div>
-                </div>
-              )}
+          {/* Center: Avatar / Loading */}
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
 
-              {/* Avatar container with rings */}
-              <div className="flex-1 flex flex-col items-center justify-center relative">
-                
-                {/* Circular rings behind avatar */}
-                <div className="absolute flex items-center justify-center pointer-events-none">
-                  <div 
-                    className="rounded-full border avatar-ring-outer"
-                    style={{ 
-                      width: 340, height: 340, 
-                      borderColor: 'var(--border-standard)',
-                      borderWidth: 1,
-                      opacity: 0.4,
-                    }} 
+            {/* ── PROVISIONING STATE ── */}
+            {isProvisioning && (
+              <div className="flex flex-col items-center justify-center gap-8 w-full max-w-md px-8">
+                {/* Pulsing rings as avatar placeholder */}
+                <div className="relative" style={{ width: 300, height: 300 }}>
+                  <div
+                    className="absolute inset-0 rounded-full border avatar-ring-outer"
+                    style={{ borderColor: 'var(--border-standard)', borderWidth: 1, opacity: 0.3 }}
                   />
-                  <div 
+                  <div
                     className="absolute rounded-full border avatar-ring-mid"
-                    style={{ 
-                      width: 300, height: 300, 
-                      borderColor: 'var(--border-standard)',
-                      borderWidth: 1,
-                      opacity: 0.5,
-                    }} 
+                    style={{ inset: 20, borderColor: 'var(--border-standard)', borderWidth: 1, opacity: 0.4 }}
                   />
-                  <div 
+                  <div
                     className="absolute rounded-full border avatar-ring-inner"
-                    style={{ 
-                      width: 260, height: 260, 
-                      borderColor: 'var(--border-emphasis)',
-                      borderWidth: 1,
-                      opacity: 0.6,
-                    }} 
+                    style={{ inset: 40, borderColor: 'var(--border-emphasis)', borderWidth: 1, opacity: 0.5 }}
+                  />
+                  {/* Center pulsing dot */}
+                  <div className="absolute left-1/2 top-1/2 w-3 h-3 -ml-1.5 -mt-1.5 rounded-full animate-pulse"
+                    style={{ background: 'var(--accent-amber)' }} />
+                </div>
+
+                {/* Step list */}
+                <div className="space-y-3 w-64">
+                  {LOADING_STEPS.map((step, i) => {
+                    const done = step.minElapsed < elapsed
+                    const active = currentStep?.label === step.label
+                    return (
+                      <div key={i} className="flex items-center gap-3">
+                        <div
+                          className="h-1.5 w-1.5 rounded-full flex-none transition-all duration-500"
+                          style={{ background: done ? 'var(--accent-green)' : active ? 'var(--accent-amber)' : 'var(--text-muted)' }}
+                        />
+                        <p
+                          className={`text-xs transition-colors duration-500 ${active ? 'font-display' : 'font-slate'}`}
+                          style={{ color: done ? 'var(--text-tertiary)' : active ? 'var(--text-secondary)' : 'var(--text-muted)' }}
+                        >
+                          {step.label}
+                          {done && <Check className="w-3 h-3 inline ml-1.5" style={{ color: 'var(--accent-green)' }} />}
+                        </p>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {/* Progress bar */}
+                <div className="w-64 h-px overflow-hidden" style={{ background: 'var(--surface-2)' }}>
+                  <div
+                    className="h-full transition-all duration-1000"
+                    style={{ background: 'var(--accent-amber)', opacity: 0.6, width: `${loadingProgress}%` }}
                   />
                 </div>
 
-                {/* Avatar video — circular mask */}
-                <div 
-                  className="relative rounded-full overflow-hidden z-10"
-                  style={{ width: 220, height: 220, border: '2px solid var(--border-standard)' }}
+                <p className="text-xs font-slate" style={{ color: 'var(--text-muted)' }}>
+                  {elapsed < 10 ? 'This takes about 60–90 seconds' : `~${Math.max(0, 90 - elapsed)}s remaining`}
+                </p>
+
+                {/* Rotating filmmaking facts */}
+                <div className="flex flex-col items-center justify-center text-center px-6" style={{ maxWidth: 560 }}>
+                  <p
+                    className="text-[10px] font-slate tracking-[0.2em] uppercase mb-3"
+                    style={{ color: 'var(--accent-amber)', opacity: 0.7 }}
+                  >
+                    Did you know?
+                  </p>
+                  <p
+                    className="text-sm font-light leading-relaxed"
+                    style={{ color: 'var(--text-secondary)', minHeight: '3.5em' }}
+                  >
+                    {FILMMAKING_FACTS[currentFactIndex]}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* ── CONNECTED STATE ── */}
+            {!isProvisioning && credentials && (
+              <div className="flex flex-col items-center gap-6">
+                {/* Instructive label above avatar */}
+                <div className="text-center max-w-lg">
+                  <p
+                    className="text-sm font-light leading-relaxed"
+                    style={{ color: 'var(--text-secondary)' }}
+                  >
+                    Hank's in the chair. What's the one image you want burned into someone's brain? Thirty seconds. Go.
+                  </p>
+                </div>
+
+                <div
+                  className="overflow-hidden"
+                  style={{
+                    width: 720,
+                    height: 405,         /* 16:9 — matches the natural Runway feed */
+                    border: '1px solid var(--border-standard)',
+                    borderRadius: 4,
+                    background: 'var(--surface-2)',
+                  }}
                 >
                   <AvatarView
                     credentials={credentials}
@@ -529,109 +494,26 @@ export default function RoomPage() {
                     onSessionActive={handleSessionActive}
                   />
                 </div>
-
-                {/* Name label */}
-                <div className="mt-6 text-center z-10">
-                  <p className="text-xl font-display" style={{ color: 'var(--text-primary)' }}>
-                    Hank
-                  </p>
-                  <p className="text-[10px] tracking-[0.25em] uppercase font-slate mt-1" style={{ color: 'var(--text-muted)' }}>
-                    Story Consultant · AI
-                  </p>
-                </div>
-
-                {/* Speech bubble */}
-                {latestEntry && (
-                  <div className="mt-8 w-full max-w-md px-8 z-10">
-                    <div 
-                      className="rounded-lg border p-4 speech-bubble relative"
-                      style={{ 
-                        borderColor: latestEntry.speaker === 'HANK' ? 'rgba(170,136,68,0.25)' : 'var(--border-subtle)',
-                        background: 'var(--surface-1)',
-                        borderLeftWidth: 3,
-                        borderLeftColor: latestEntry.speaker === 'HANK' ? 'var(--accent-amber)' : 'var(--text-muted)',
-                      }}
-                    >
-                      <p className="text-[10px] tracking-[0.2em] uppercase mb-2 font-slate" style={{ color: latestEntry.speaker === 'HANK' ? 'var(--accent-amber)' : 'var(--text-muted)' }}>
-                        {latestEntry.speaker === 'HANK' ? 'Hank' : 'You'}
-                      </p>
-                      <p className="text-sm font-light leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-                        "{latestEntry.text}"
-                      </p>
-                    </div>
-                  </div>
-                )}
               </div>
-
-              {/* Bottom mic bar */}
-              <div 
-                className="flex-none flex items-center justify-center px-8 py-5 border-t"
-                style={{ borderColor: 'var(--border-subtle)', background: 'var(--surface-1)' }}
-              >
-                <div className="flex items-center gap-4 w-full max-w-lg">
-                  {/* Mic button */}
-                  <button
-                    className="relative flex-none w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200"
-                    style={{ 
-                      background: micActive && !micMuted 
-                        ? 'var(--accent-green)' 
-                        : micMuted 
-                          ? 'var(--surface-2)' 
-                          : 'var(--surface-2)',
-                      color: micActive && !micMuted ? '#fff' : 'var(--text-muted)',
-                      border: `2px solid ${micActive && !micMuted ? 'var(--accent-green)' : 'var(--border-standard)'}`,
-                    }}
-                  >
-                    <Mic className="w-5 h-5" />
-                    {micActive && !micMuted && isSpeaking && (
-                      <div 
-                        className="absolute inset-0 rounded-full mic-ring-pulse"
-                        style={{ border: '2px solid var(--accent-green)' }}
-                      />
-                    )}
-                  </button>
-
-                  {/* Input pill */}
-                  <div 
-                    className="flex-1 flex items-center gap-3 rounded-full px-5 py-3"
-                    style={{ 
-                      background: 'var(--canvas)', 
-                      border: '1px solid var(--border-standard)',
-                    }}
-                  >
-                    <p className="text-sm flex-1" style={{ color: 'var(--text-muted)' }}>
-                      {isSpeaking 
-                        ? 'Listening...' 
-                        : micActive && !micMuted 
-                          ? 'Speak or type your response...' 
-                          : 'Click mic to start speaking'}
-                    </p>
-                    <button
-                      className="w-8 h-8 rounded-full flex items-center justify-center transition-all duration-150"
-                      style={{ 
-                        background: micActive ? 'var(--text-primary)' : 'var(--surface-2)',
-                        color: micActive ? 'var(--canvas)' : 'var(--text-muted)',
-                      }}
-                    >
-                      <ArrowUp className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* ═══════════════════════════════════════
-               RIGHT COLUMN — Transcript
-            ═══════════════════════════════════════ */}
-            <div
-              className="flex flex-[0_0_40%] flex-col h-full border-l overflow-hidden"
-              style={{ borderColor: 'var(--border-subtle)', background: 'var(--canvas)' }}
-            >
-              <TranscriptPanel entries={transcript} />
-            </div>
+            )}
           </div>
+
+          {/* Floating Generate Script button — bottom-right */}
+          {!isProvisioning && (
+            <div className="absolute bottom-6 right-6 z-20">
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleFinishClick}
+                disabled={pageState !== 'connected'}
+                className="group"
+              >
+                Generate Script <ArrowRight className="w-3 h-3 inline-block transition-transform duration-200 group-hover:translate-x-1" />
+              </Button>
+            </div>
+          )}
         </div>
-      )}
+      </div>
 
       {/* Runway attribution */}
       <div className="absolute bottom-16 right-8 text-xs pointer-events-none z-10" style={{ color: 'var(--text-muted)' }}>

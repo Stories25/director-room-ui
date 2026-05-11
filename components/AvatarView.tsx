@@ -42,7 +42,14 @@ function AvatarCallUI({ onTranscriptUpdate, onMicStateChange, onEnd, onActive, s
     useCallback(
       (entry) => {
         if (!entry.final) return // only capture finalized segments
-        const speaker = entry.participantIdentity === 'agent' ? 'HANK' : 'YOU'
+        // Log so we can see the actual participantIdentity value in the console
+        console.log('[transcript] participantIdentity:', entry.participantIdentity, '| text:', entry.text.slice(0, 40))
+        // 'agent' is the Runway SDK identity for the avatar — anything else is the user
+        const isAgent = entry.participantIdentity === 'agent'
+          || entry.participantIdentity?.toLowerCase().includes('agent')
+          || entry.participantIdentity?.toLowerCase().includes('hank')
+          || entry.participantIdentity?.toLowerCase().includes('assistant')
+        const speaker = isAgent ? 'HANK' : 'YOU'
         onTranscriptUpdate({
           speaker,
           text: entry.text,
@@ -67,28 +74,19 @@ function AvatarCallUI({ onTranscriptUpdate, onMicStateChange, onEnd, onActive, s
   }, [handleEnd])
 
   return (
-    <div className="relative h-full w-full overflow-hidden rounded-full">
-      {/* Avatar video — centered and zoomed to frame the face */}
+    <div className="relative h-full w-full overflow-hidden">
+      {/* Avatar video */}
       <AvatarVideo
         className="h-full w-full"
         style={{
           objectFit: 'cover',
-          objectPosition: 'center 25%',
-          transform: 'scale(1.25)',
-        }}
-      />
-
-      {/* Subtle shadow overlay for depth */}
-      <div
-        className="pointer-events-none absolute inset-0 rounded-full"
-        style={{
-          boxShadow: 'inset 0 0 40px rgba(0,0,0,0.15)',
+          objectPosition: 'center center',
         }}
       />
 
       {/* Connecting state overlay */}
       {state === 'connecting' && (
-        <div className="absolute inset-0 flex items-center justify-center rounded-full" style={{ background: 'var(--surface-2)' }}>
+        <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'var(--surface-2)' }}>
           <p className="text-xs tracking-[0.3em] uppercase breathe" style={{ color: 'var(--text-muted)' }}>
             Connecting...
           </p>
