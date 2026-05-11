@@ -64,6 +64,9 @@ export default function RoomPage() {
   const loadingProgress = Math.min((elapsed / 90) * 100, 95)
 
   useEffect(() => {
+    let cancelled = false
+    let pollInterval: ReturnType<typeof setInterval> | null = null
+
     async function createSession() {
       try {
         const res = await fetch('/api/avatar/session', {
@@ -75,17 +78,50 @@ export default function RoomPage() {
           const err = await res.json()
           throw new Error(err.error || 'Failed to create session')
         }
-        const creds: SessionCredentials = await res.json()
-        setCredentials(creds)
-        setSessionStartedAt(Date.now())
-        setPageState('connected')
+        const { sessionId } = await res.json()
+        if (cancelled) return
+
+        pollInterval = setInterval(async () => {
+          if (cancelled) {
+            if (pollInterval) clearInterval(pollInterval)
+            return
+          }
+          try {
+            const statusRes = await fetch(`/api/avatar/session/status?id=${sessionId}`)
+            if (!statusRes.ok) return
+            const data = await statusRes.json()
+            if (cancelled) return
+
+            if (data.status === 'ready') {
+              if (pollInterval) clearInterval(pollInterval)
+              setCredentials(data.credentials)
+              setSessionStartedAt(Date.now())
+              setPageState('connected')
+            } else if (data.status === 'failed') {
+              if (pollInterval) clearInterval(pollInterval)
+              throw new Error(data.error || 'Session failed to provision')
+            }
+          } catch (err) {
+            if (cancelled) return
+            if (pollInterval) clearInterval(pollInterval)
+            console.error('[room] Status poll failed:', err)
+            setError(String(err))
+            setPageState('error')
+          }
+        }, 3000)
       } catch (err) {
+        if (cancelled) return
         console.error('[room] Session creation failed:', err)
         setError(String(err))
         setPageState('error')
       }
     }
+
     createSession()
+    return () => {
+      cancelled = true
+      if (pollInterval) clearInterval(pollInterval)
+    }
   }, [])
 
   useEffect(() => {
