@@ -4,10 +4,10 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import {
-  Play, ArrowRight, ArrowLeft, Loader2, Check,
+  Play, ArrowRight, ArrowLeft, Check,
   Download, AlertCircle, RefreshCw, Music,
 } from 'lucide-react'
-import type { Bgm, BgmTimestamp, ScriptDocument, VideoResult } from '@/lib/types'
+import type { Bgm, BgmTimestamp } from '@/lib/types'
 import { Sprocket, TopBar } from '@/components/shell/Shell'
 import WorkflowStepper from '@/components/WorkflowStepper'
 import Button from '@/components/ui/Button'
@@ -178,10 +178,10 @@ function TimelineRow({ ts, isLast }: { ts: BgmTimestamp; isLast: boolean }) {
 // ─── Ready view ───────────────────────────────────────────────────────────────
 
 function ReadyView({
-  bgm, video, approved, onApprove, onRegenerate,
+  bgm, videoThumbnail, approved, onApprove, onRegenerate,
 }: {
   bgm: Bgm
-  video: VideoResult | null
+  videoThumbnail: string | null
   approved: boolean
   onApprove: () => void
   onRegenerate: () => void
@@ -203,8 +203,9 @@ function ReadyView({
       <div className="rounded border overflow-hidden mb-6"
         style={{ borderColor: 'var(--border-standard)', background: 'var(--canvas)' }}>
         <div className="relative w-full" style={{ aspectRatio: '16/9', background: 'var(--surface-2)' }}>
-          {video?.clips?.[0]?.thumbnailUrl ? (
-            <img src={video.clips[0].thumbnailUrl} alt="Preview"
+          {videoThumbnail ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={videoThumbnail} alt="Preview"
               className="w-full h-full object-cover opacity-50" />
           ) : (
             <div className="w-full h-full flex items-center justify-center">
@@ -322,15 +323,6 @@ function ReadyView({
   )
 }
 
-// ─── Session helpers ──────────────────────────────────────────────────────────
-
-function readSession<T>(key: string): T | null {
-  if (typeof window === 'undefined') return null
-  const s = sessionStorage.getItem(key)
-  if (!s) return null
-  try { return JSON.parse(s) } catch { return null }
-}
-
 function sleep(ms: number) { return new Promise<void>(r => setTimeout(r, ms)) }
 
 async function pollForBgm(
@@ -344,7 +336,7 @@ async function pollForBgm(
     const res = await fetch(`/api/projects/${projectId}`)
     if (!res.ok) continue
     const { project } = await res.json()
-    const bgms = project?.storyboard?.bgms
+    const bgms = project?.bgms
     if (bgms && bgms.length > 0) return bgms[bgms.length - 1]
   }
   throw new Error('Music generation timed out — please try again')
@@ -352,22 +344,48 @@ async function pollForBgm(
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-type PageState = 'generating' | 'polling' | 'ready' | 'error'
+type PageState = 'loading' | 'idle' | 'generating' | 'polling' | 'ready' | 'error'
+
+function getFirstVideoThumbnail(shots: Record<string, { image?: { active: number; generations: { url: string; version: number }[] } }>): string | null {
+  const keys = Object.keys(shots).sort((a, b) => {
+    const [aS, aF] = a.split('.').map(Number)
+    const [bS, bF] = b.split('.').map(Number)
+    return aS !== bS ? aS - bS : aF - bF
+  })
+  for (const key of keys) {
+    const shot = shots[key]
+    const img = shot?.image
+    const gens = img?.generations
+    if (gens && gens.length > 0) {
+      const active = img.active
+      const gen = gens.find(g => g.version === active) ?? gens[gens.length - 1]
+      if (gen?.url) return gen.url
+    }
+  }
+  return null
+}
 
 export default function SoundPage() {
   const router    = useRouter()
   const params    = useParams()
   const projectId = params?.id as string
 
-  const [script,    setScript]    = useState<ScriptDocument | null>(null)
-  const [video,     setVideo]     = useState<VideoResult | null>(null)
-  const [bgm,       setBgm]       = useState<Bgm | null>(null)
-  const [pageState, setPageState] = useState<PageState>('generating')
-  const [error,     setError]     = useState<string | null>(null)
-  const [approved,  setApproved]  = useState(false)
-  const [elapsed,   setElapsed]   = useState(0)
-  const generationStarted = useRef(false)
+  const [projectTitle,   setProjectTitle]   = useState<string | null>(null)
+  const [videoThumbnail, setVideoThumbnail] = useState<string | null>(null)
+  const [bgm,            setBgm]            = useState<Bgm | null>(null)
+  const [pageState,      setPageState]      = useState<PageState>('loading')
+  const [error,          setError]          = useState<string | null>(null)
+  const [approved,       setApproved]       = useState(false)
+  const [elapsed,        setElapsed]        = useState(0)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  useEffect(() => {
+    if (projectTitle) {
+      document.title = `${projectTitle} | Sound`
+    } else {
+      document.title = "Sound | Director's Room"
+    }
+  }, [projectTitle])
 
   // ── Elapsed ticker ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -397,7 +415,6 @@ export default function SoundPage() {
       setPageState('polling')
       setElapsed(0)
       const result = await pollForBgm(projectId, setElapsed)
-      sessionStorage.setItem('directors-room-bgm', JSON.stringify(result))
       setBgm(result)
       setPageState('ready')
     } catch (err) {
@@ -407,35 +424,47 @@ export default function SoundPage() {
     }
   }, [projectId])
 
-  // ── Boot ──────────────────────────────────────────────────────────────────
+  // ── Boot — fetch project from API, check for existing BGMs ────────────────
   useEffect(() => {
-    const cachedScript = readSession<ScriptDocument>('directors-room-script')
-    const cachedVideo  = readSession<VideoResult>('directors-room-video')
-    const cachedBgm    = readSession<Bgm>('directors-room-bgm')
+    let cancelled = false
 
-    if (cachedVideo)  setVideo(cachedVideo)
-    if (cachedScript) setScript(cachedScript)
+    async function boot() {
+      try {
+        const res = await fetch(`/api/projects/${projectId}`)
+        if (!res.ok) throw new Error('Project not found')
+        const { project } = await res.json()
+        if (cancelled) return
 
-    if (cachedBgm) {
-      setBgm(cachedBgm)
-      setPageState('generating')
-      setTimeout(() => setPageState('ready'), 1500)
-      return
+        setProjectTitle(project.title ?? null)
+        if (project?.storyboard?.shots) {
+          setVideoThumbnail(getFirstVideoThumbnail(project.storyboard.shots))
+        }
+
+        const bgms = project?.bgms
+        if (bgms && bgms.length > 0) {
+          setBgm(bgms[bgms.length - 1])
+          setPageState('ready')
+          return
+        }
+
+        setPageState('idle')
+      } catch (err) {
+        if (cancelled) return
+        console.error('[sound] Boot fetch failed:', err)
+        setError(String(err))
+        setPageState('error')
+      }
     }
 
-    if (!generationStarted.current) {
-      generationStarted.current = true
-      generate()
-    }
+    boot()
+    return () => { cancelled = true }
   }, [projectId, generate])
 
   const handleApprove = useCallback(() => setApproved(true), [])
 
   const handleRegenerate = useCallback(() => {
-    sessionStorage.removeItem('directors-room-bgm')
     setBgm(null)
     setApproved(false)
-    generationStarted.current = true
     generate()
   }, [generate])
 
@@ -459,8 +488,37 @@ export default function SoundPage() {
 
       <WorkflowStepper current="sound" projectId={projectId} />
 
+      {pageState === 'loading' && (
+        <div className="flex-1 flex flex-col items-center justify-center gap-6">
+          <div className="h-8 w-8 rounded-full border-t animate-spin"
+            style={{ borderColor: 'var(--surface-2)', borderTopColor: 'var(--text-secondary)' }} />
+          <p className="text-xs font-slate" style={{ color: 'var(--text-muted)' }}>Loading project...</p>
+        </div>
+      )}
+
+      {pageState === 'idle' && (
+        <div className="flex-1 flex flex-col items-center justify-center gap-8"
+          style={{ background: 'radial-gradient(ellipse 70% 60% at 50% 50%, rgba(170,136,68,0.04) 0%, transparent 70%)' }}>
+          <div
+            className="w-16 h-16 rounded-full border flex items-center justify-center"
+            style={{ borderColor: 'var(--border-emphasis)', background: 'rgba(255,255,255,0.03)' }}
+          >
+            <Music className="w-7 h-7 ml-0.5" style={{ color: 'var(--text-tertiary)' }} />
+          </div>
+          <div className="text-center space-y-1">
+            <p className="text-sm font-light" style={{ color: 'var(--text-secondary)' }}>No soundtrack yet</p>
+            <p className="text-xs font-slate" style={{ color: 'var(--text-muted)' }}>
+              Generate a background music track for your teaser
+            </p>
+          </div>
+          <Button variant="primary" size="md" onClick={generate} className="group gap-2">
+            Generate Soundtrack <ArrowRight className="w-3 h-3 transition-transform duration-200 group-hover:translate-x-1" />
+          </Button>
+        </div>
+      )}
+
       {(pageState === 'generating' || pageState === 'polling') && (
-        <GeneratingView elapsed={elapsed} label={generatingLabel} title={script?.title} />
+        <GeneratingView elapsed={elapsed} label={generatingLabel} title={projectTitle ?? undefined} />
       )}
 
       {pageState === 'error' && (
@@ -480,7 +538,7 @@ export default function SoundPage() {
         <div className="flex-1 overflow-y-auto w-full">
           <ReadyView
             bgm={bgm}
-            video={video}
+            videoThumbnail={videoThumbnail}
             approved={approved}
             onApprove={handleApprove}
             onRegenerate={handleRegenerate}
@@ -488,7 +546,7 @@ export default function SoundPage() {
         </div>
       )}
 
-      {(pageState === 'ready' || pageState === 'error') && (
+      {(pageState === 'idle' || pageState === 'ready' || pageState === 'error') && (
         <div className="flex-none w-full border-t"
           style={{ borderColor: 'var(--border-subtle)', background: 'var(--surface-1)' }}>
           <div className="flex items-center justify-between py-4"

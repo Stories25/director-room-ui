@@ -90,8 +90,8 @@ export interface ProjectDetail extends ProjectListItem {
     active_grid: number
     grids: Record<string, { url: string; created_at: number }>
     shots: Record<string, import('./types').StoryboardShot & { video?: { active: number; generations: unknown[] }; audio?: { active: number; generations: unknown[] } }>
-    bgms?: Bgm[]
   } | null
+  bgms?: Bgm[]
 }
 
 export async function getProjects(): Promise<ProjectListItem[]> {

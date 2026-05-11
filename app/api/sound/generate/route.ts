@@ -7,7 +7,7 @@ import { generateMusic } from '@/lib/argon'
  *
  * Proxies to POST /runway/projects/:id/storyboard/music on Argon.
  * The actual BGM result is returned asynchronously — poll GET /api/projects/:id
- * until project.storyboard.bgms is non-empty.
+ * until project.bgms is non-empty.
  */
 export async function POST(request: NextRequest) {
   try {
