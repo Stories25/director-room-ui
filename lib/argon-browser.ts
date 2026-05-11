@@ -119,6 +119,20 @@ export async function generateStoryboard(projectId: string): Promise<StoryboardR
   }
 }
 
+// ─── Music generation: POST /runway/projects/:id/storyboard/music ────────────
+// Fires the request — result arrives via polling getProject()
+
+export async function generateMusic(projectId: string): Promise<void> {
+  const res = await fetch(`${BASE_URL}/runway/projects/${projectId}/storyboard/music`, {
+    method: 'POST',
+    headers: headers(),
+  })
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error(`Failed to generate music (${res.status}): ${err}`)
+  }
+}
+
 // ─── Step 4: POST /api/video/generate (stub → will call Argon when ready) ─────
 
 export async function generateVideo(projectId: string, shots: StoryboardResult['shots']): Promise<VideoResult> {

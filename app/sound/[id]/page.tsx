@@ -5,26 +5,26 @@ import { useRouter, useParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import {
   Play, ArrowRight, ArrowLeft, Loader2, Check,
-  Download, AlertCircle, RefreshCw,
+  Download, AlertCircle, RefreshCw, Music,
 } from 'lucide-react'
-import type { SoundResult, SoundVariation, SoundTrackMood, ScriptDocument, VideoResult } from '@/lib/types'
+import type { Bgm, BgmTimestamp, ScriptDocument, VideoResult } from '@/lib/types'
 import { Sprocket, TopBar } from '@/components/shell/Shell'
 import WorkflowStepper from '@/components/WorkflowStepper'
 import Button from '@/components/ui/Button'
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// ─── Dynamic note config ──────────────────────────────────────────────────────
 
-const MOOD_LABELS: Record<SoundTrackMood, string> = {
-  epic: 'Epic', tense: 'Tense', melancholic: 'Melancholic',
-  uplifting: 'Uplifting', mysterious: 'Mysterious', romantic: 'Romantic', minimal: 'Minimal',
+const NOTE_COLORS: Record<string, string> = {
+  INTRO: 'rgba(170,136,68,0.35)',
+  RISE:  'rgba(170,136,68,0.60)',
+  PEAK:  'rgba(170,136,68,1.00)',
+  FALL:  'rgba(170,136,68,0.50)',
+  FADE:  'rgba(170,136,68,0.25)',
 }
 
-const MOOD_COLORS: Record<SoundTrackMood, string> = {
-  epic: '#aa8844', tense: '#8a6a3a', melancholic: '#5a7a8a',
-  uplifting: '#5a8a5a', mysterious: '#6a5a8a', romantic: '#8a5a6a', minimal: '#555555',
-}
+const NOTE_COLOR_DEFAULT = 'rgba(170,136,68,0.4)'
 
-// ─── Waveform ─────────────────────────────────────────────────────────────────
+// ─── Waveform (client-only to avoid SSR mismatch) ────────────────────────────
 
 function generateWaveform(seed: number, bars = 48): number[] {
   const out: number[] = []
@@ -37,10 +37,8 @@ function generateWaveform(seed: number, bars = 48): number[] {
   return out
 }
 
-// Rendered client-only to avoid SSR/client style serialization mismatch
-// (Math.sin produces floats; React style numbers serialize differently on server vs client)
-function WaveformInner({ seed, color, animate, height = 48 }: {
-  seed: number; color: string; animate: boolean; height?: number
+function WaveformInner({ seed, animate, height = 48 }: {
+  seed: number; animate: boolean; height?: number
 }) {
   const bars = generateWaveform(seed)
   return (
@@ -52,9 +50,9 @@ function WaveformInner({ seed, color, animate, height = 48 }: {
           style={{
             width: '3px',
             height: `${(h * 100).toFixed(2)}%`,
-            background: color,
+            background: 'var(--accent-amber)',
             borderRadius: '1px',
-            opacity: animate ? 0.85 : 0.45,
+            opacity: animate ? 0.75 : 0.4,
             animationDelay: animate ? `${i * 35}ms` : undefined,
             animationDuration: animate ? `${(1.6 + (i % 5) * 0.2).toFixed(1)}s` : undefined,
           }}
@@ -66,15 +64,16 @@ function WaveformInner({ seed, color, animate, height = 48 }: {
 
 const Waveform = dynamic(() => Promise.resolve(WaveformInner), { ssr: false })
 
-// ─── Generating view ──────────────────────────────────────────────────────────
+// ─── Generating view (client-only) ───────────────────────────────────────────
 
-function GeneratingViewInner({ elapsed, title }: { elapsed: number; title?: string }) {
-  const estimate = Math.max(0, 45 - elapsed)
+function GeneratingViewInner({ elapsed, label, title }: {
+  elapsed: number; label: string; title?: string
+}) {
+  const estimate = Math.max(0, 60 - elapsed)
   const bars = generateWaveform(42, 56)
 
   return (
     <div className="flex-1 flex flex-col items-center justify-center gap-10">
-      {/* Large animated waveform */}
       <div className="flex items-end gap-[3px]" style={{ height: 96 }}>
         {bars.map((h, i) => (
           <div
@@ -100,15 +99,15 @@ function GeneratingViewInner({ elapsed, title }: { elapsed: number; title?: stri
           </p>
         )}
         <p className="text-sm font-light breathe" style={{ color: 'var(--text-secondary)' }}>
-          Composing soundtrack…
+          {label}
         </p>
         <p className="text-xs font-slate" style={{ color: 'var(--text-muted)' }}>
-          ElevenLabs is scoring your 30-second teaser via Runway
+          ElevenLabs is scoring your teaser via Runway
         </p>
       </div>
 
       <p className="text-[10px] font-slate tabular-nums" style={{ color: 'var(--text-muted)' }}>
-        {elapsed < 5 ? 'This takes about 45 seconds' : `~${estimate}s remaining`}
+        {elapsed < 5 ? 'This takes about 60 seconds' : `~${estimate}s remaining`}
       </p>
     </div>
   )
@@ -116,24 +115,89 @@ function GeneratingViewInner({ elapsed, title }: { elapsed: number; title?: stri
 
 const GeneratingView = dynamic(() => Promise.resolve(GeneratingViewInner), { ssr: false })
 
+// ─── Shot timeline row ────────────────────────────────────────────────────────
+
+function TimelineRow({ ts, isLast }: { ts: BgmTimestamp; isLast: boolean }) {
+  const duration = ((ts.end_ms - ts.start_ms) / 1000).toFixed(1)
+  const fillPct  = ((ts.energy / 5) * 100).toFixed(0)
+  const color    = NOTE_COLORS[ts.dynamic_note] ?? NOTE_COLOR_DEFAULT
+
+  return (
+    <div
+      className="flex items-center gap-4 py-3"
+      style={{ borderBottom: isLast ? 'none' : '1px solid var(--border-subtle)' }}
+    >
+      {/* Shot key */}
+      <span
+        className="flex-none text-[9px] font-slate px-1.5 py-0.5 rounded border"
+        style={{
+          width: 36,
+          textAlign: 'center',
+          color: 'var(--accent-amber)',
+          borderColor: 'rgba(170,136,68,0.25)',
+          background: 'rgba(170,136,68,0.05)',
+        }}
+      >
+        {ts.shot_id}
+      </span>
+
+      {/* Energy bar */}
+      <div className="flex-none rounded-sm overflow-hidden" style={{ width: 80, height: 6, background: 'var(--surface-3)' }}>
+        <div
+          className="h-full rounded-sm transition-all duration-500"
+          style={{
+            width: `${fillPct}%`,
+            background: color,
+            boxShadow: ts.dynamic_note === 'PEAK' ? `0 0 6px ${color}` : 'none',
+          }}
+        />
+      </div>
+
+      {/* Dynamic note */}
+      <span
+        className="flex-none text-[9px] font-slate tracking-[0.1em] uppercase w-14"
+        style={{ color }}
+      >
+        {ts.dynamic_note}
+      </span>
+
+      {/* Duration */}
+      <span className="flex-none text-[10px] font-slate tabular-nums" style={{ color: 'var(--text-muted)', width: 28 }}>
+        {duration}s
+      </span>
+
+      {/* Volume bar */}
+      <div className="flex items-center gap-1.5 flex-none">
+        <div className="rounded-sm overflow-hidden" style={{ width: 40, height: 3, background: 'var(--surface-3)' }}>
+          <div
+            className="h-full rounded-sm"
+            style={{ width: `${(ts.volume * 100).toFixed(0)}%`, background: 'var(--text-tertiary)' }}
+          />
+        </div>
+        <span className="text-[9px] font-slate tabular-nums" style={{ color: 'var(--text-muted)' }}>
+          {Math.round(ts.volume * 100)}%
+        </span>
+      </div>
+    </div>
+  )
+}
+
 // ─── Ready view ───────────────────────────────────────────────────────────────
 
 function ReadyView({
-  variation,
+  bgm,
   video,
   approved,
   onApprove,
   onRegenerate,
-  isRegenerating,
 }: {
-  variation: SoundVariation
+  bgm: Bgm
   video: VideoResult | null
   approved: boolean
   onApprove: () => void
   onRegenerate: () => void
-  isRegenerating: boolean
 }) {
-  const color = MOOD_COLORS[variation.mood] ?? 'var(--accent-amber)'
+  const durationSec = (bgm.duration_ms / 1000).toFixed(0)
 
   return (
     <div style={{ maxWidth: 800, margin: '0 auto', paddingTop: 40, paddingBottom: 100, paddingLeft: 40, paddingRight: 40 }}>
@@ -148,16 +212,12 @@ function ReadyView({
         </h1>
       </div>
 
-      {/* Video + audio preview */}
-      <div className="rounded border overflow-hidden mb-8" style={{ borderColor: 'var(--border-standard)', background: 'var(--canvas)' }}>
-        {/* 16:9 player */}
+      {/* Video preview */}
+      <div className="rounded border overflow-hidden mb-6" style={{ borderColor: 'var(--border-standard)', background: 'var(--canvas)' }}>
         <div className="relative w-full" style={{ aspectRatio: '16/9', background: 'var(--surface-2)' }}>
           {video?.clips?.[0]?.thumbnailUrl ? (
-            <img
-              src={video.clips[0].thumbnailUrl}
-              alt="Preview"
-              className="w-full h-full object-cover opacity-50"
-            />
+            <img src={video.clips[0].thumbnailUrl} alt="Preview"
+              className="w-full h-full object-cover opacity-50" />
           ) : (
             <div className="w-full h-full flex items-center justify-center">
               <Play className="w-8 h-8" style={{ color: 'var(--border-emphasis)' }} />
@@ -178,47 +238,105 @@ function ReadyView({
           </div>
         </div>
 
-        {/* Waveform bar beneath player */}
+        {/* Waveform strip */}
         <div
           className="px-6 py-4 border-t flex items-center gap-4"
           style={{ borderColor: 'var(--border-subtle)', background: 'var(--surface-1)' }}
         >
           <div className="flex-1">
-            <Waveform seed={variation.waveformSeed} color={color} animate={!approved} height={40} />
+            <Waveform seed={1} animate={!approved} height={40} />
           </div>
           <div className="flex items-center gap-3 flex-none">
-            <span
-              className="text-[9px] px-2 py-1 rounded font-slate"
-              style={{ background: `${color}18`, color }}
-            >
-              {MOOD_LABELS[variation.mood]}
-            </span>
-            <span className="text-[10px] font-slate" style={{ color: 'var(--text-muted)' }}>
-              {variation.duration}s
+            <span className="text-[10px] font-slate tabular-nums" style={{ color: 'var(--text-muted)' }}>
+              {durationSec}s
             </span>
           </div>
         </div>
       </div>
 
+      {/* Native audio player */}
+      <div className="mb-8 space-y-3">
+        <audio
+          controls
+          src={bgm.url}
+          className="w-full"
+          style={{ height: 36, colorScheme: 'dark' }}
+        />
+        {/* Prompt chip */}
+        <div className="flex items-start gap-2">
+          <Music className="w-3 h-3 flex-none mt-0.5" style={{ color: 'var(--accent-amber)', opacity: 0.7 }} />
+          <p className="text-[11px] font-light leading-relaxed italic" style={{ color: 'var(--text-muted)' }}>
+            {bgm.prompt}
+          </p>
+        </div>
+      </div>
+
+      {/* Shot timeline */}
+      {bgm.timestamps.length > 0 && (
+        <div className="mb-8">
+          <div className="flex items-center gap-3 mb-3">
+            <p className="text-[10px] tracking-[0.25em] uppercase font-slate" style={{ color: 'var(--text-muted)' }}>
+              Soundtrack Timeline
+            </p>
+            <div className="flex-1 h-px" style={{ background: 'var(--border-subtle)' }} />
+            <span className="text-[10px] font-slate" style={{ color: 'var(--text-muted)' }}>
+              {bgm.timestamps.length} shots · {durationSec}s
+            </span>
+          </div>
+
+          <div
+            className="rounded border overflow-hidden"
+            style={{ borderColor: 'var(--border-standard)', background: 'var(--surface-1)' }}
+          >
+            {/* Column headers */}
+            <div
+              className="flex items-center gap-4 px-4 py-2 border-b"
+              style={{ borderColor: 'var(--border-subtle)' }}
+            >
+              {[
+                { label: 'Shot', width: 36 },
+                { label: 'Energy', width: 80 },
+                { label: 'Stage', width: 56 },
+                { label: 'Dur', width: 28 },
+                { label: 'Vol', width: 64 },
+              ].map(col => (
+                <span
+                  key={col.label}
+                  className="text-[9px] tracking-[0.15em] uppercase font-slate flex-none"
+                  style={{ color: 'var(--text-muted)', width: col.width }}
+                >
+                  {col.label}
+                </span>
+              ))}
+            </div>
+
+            {/* Rows */}
+            <div className="px-4">
+              {bgm.timestamps.map((ts, i) => (
+                <TimelineRow
+                  key={`${ts.shot_id}-${ts.start_ms}`}
+                  ts={ts}
+                  isLast={i === bgm.timestamps.length - 1}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Actions */}
-      <div className="flex items-center justify-between">
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={onRegenerate}
-          disabled={isRegenerating || approved}
-        >
-          {isRegenerating
-            ? <><Loader2 className="w-3 h-3 animate-spin" /> Regenerating</>
-            : <><RefreshCw className="w-3 h-3" /> Regenerate</>
-          }
+      <div className="flex items-center justify-between pt-4 border-t" style={{ borderColor: 'var(--border-subtle)' }}>
+        <Button variant="secondary" size="sm" onClick={onRegenerate} disabled={approved}>
+          <RefreshCw className="w-3 h-3" /> Regenerate
         </Button>
 
         <div className="flex items-center gap-3">
           {approved && (
-            <Button variant="secondary" size="md" className="gap-2">
-              <Download className="w-3 h-3" /> Export Final Video
-            </Button>
+            <a href={bgm.url} download target="_blank" rel="noopener noreferrer">
+              <Button variant="secondary" size="md" className="gap-2">
+                <Download className="w-3 h-3" /> Download Track
+              </Button>
+            </a>
           )}
           <Button
             variant={approved ? 'success' : 'primary'}
@@ -247,57 +365,87 @@ function readSession<T>(key: string): T | null {
   try { return JSON.parse(s) } catch { return null }
 }
 
-function buildPrompt(script: ScriptDocument | null): string {
-  if (!script) return 'Cinematic orchestral score. Music only. No vocals. 30 seconds.'
-  return [
-    script.genre && `Genre: ${script.genre}.`,
-    script.tone && `Tone: ${script.tone}.`,
-    script.narrative_arc && `Narrative arc: ${script.narrative_arc}.`,
-    script.visual_style && `Visual style: ${script.visual_style}.`,
-    'Music only — no vocals, no dialogue, no sound effects.',
-    'Duration: 30 seconds.',
-  ].filter(Boolean).join(' ')
+function sleep(ms: number): Promise<void> {
+  return new Promise(r => setTimeout(r, ms))
+}
+
+async function pollForBgm(
+  projectId: string,
+  onElapsed: (n: number) => void,
+  maxAttempts = 24,
+): Promise<Bgm> {
+  for (let i = 0; i < maxAttempts; i++) {
+    await sleep(5000)
+    onElapsed((i + 1) * 5)
+    const res = await fetch(`/api/projects/${projectId}`)
+    if (!res.ok) continue
+    const { project } = await res.json()
+    const bgms = project?.storyboard?.bgms
+    if (bgms && bgms.length > 0) return bgms[bgms.length - 1] // always latest
+  }
+  throw new Error('Music generation timed out — please try again')
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-type PageState = 'generating' | 'ready' | 'error'
+type PageState = 'generating' | 'polling' | 'ready' | 'error'
 
 export default function SoundPage() {
-  const router = useRouter()
-  const params = useParams()
+  const router   = useRouter()
+  const params   = useParams()
   const projectId = params?.id as string
 
-  const [script, setScript] = useState<ScriptDocument | null>(null)
-  const [video, setVideo] = useState<VideoResult | null>(null)
-  const [sound, setSound] = useState<SoundResult | null>(null)
-  // Start in 'generating' — the boot effect will override to 'ready' if cached
+  const [script,    setScript]    = useState<ScriptDocument | null>(null)
+  const [video,     setVideo]     = useState<VideoResult | null>(null)
+  const [bgm,       setBgm]       = useState<Bgm | null>(null)
   const [pageState, setPageState] = useState<PageState>('generating')
-  const [error, setError] = useState<string | null>(null)
-  const [approved, setApproved] = useState(false)
-  const [elapsed, setElapsed] = useState(0)
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [error,     setError]     = useState<string | null>(null)
+  const [approved,  setApproved]  = useState(false)
+  const [elapsed,   setElapsed]   = useState(0)
   const generationStarted = useRef(false)
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  // ── Generate ──────────────────────────────────────────────────────────────
+  // ── Elapsed ticker ────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (pageState === 'generating' || pageState === 'polling') {
+      timerRef.current = setInterval(() => setElapsed(s => s + 1), 1000)
+    } else {
+      if (timerRef.current) clearInterval(timerRef.current)
+    }
+    return () => { if (timerRef.current) clearInterval(timerRef.current) }
+  }, [pageState])
+
+  // ── Core generate + poll flow ─────────────────────────────────────────────
   const generate = useCallback(async (scriptData: ScriptDocument | null) => {
     setError(null)
+    setElapsed(0)
     setPageState('generating')
-    const prompt = buildPrompt(scriptData)
+
     try {
-      const res = await fetch('/api/sound/mix', {
+      // Trigger music generation on Argon
+      const res = await fetch('/api/sound/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId, prompt }),
+        body: JSON.stringify({ projectId }),
       })
-      if (!res.ok) throw new Error('Generation failed')
-      const { sound: result } = await res.json()
-      // Keep only the first variation
-      const single: SoundResult = { ...result, variations: result.variations.slice(0, 1) }
-      sessionStorage.setItem('directors-room-sound', JSON.stringify(single))
-      setSound(single)
+      if (!res.ok) {
+        const { error: err } = await res.json().catch(() => ({}))
+        throw new Error(err || `Generation failed (${res.status})`)
+      }
+
+      // Switch to polling state
+      setPageState('polling')
+      setElapsed(0)
+
+      // Poll until bgms arrives
+      const result = await pollForBgm(projectId, setElapsed)
+
+      // Cache and show
+      sessionStorage.setItem('directors-room-bgm', JSON.stringify(result))
+      setBgm(result)
       setPageState('ready')
     } catch (err) {
+      console.error('[sound] generate failed:', err)
       setError(String(err))
       setPageState('error')
     }
@@ -307,59 +455,44 @@ export default function SoundPage() {
   useEffect(() => {
     const cachedScript = readSession<ScriptDocument>('directors-room-script')
     const cachedVideo  = readSession<VideoResult>('directors-room-video')
-    const cachedSound  = readSession<SoundResult>('directors-room-sound')
+    const cachedBgm    = readSession<Bgm>('directors-room-bgm')
 
     if (cachedVideo)  setVideo(cachedVideo)
     if (cachedScript) setScript(cachedScript)
 
-    // Already have a result — show waveform briefly then reveal
-    if (cachedSound && cachedSound.projectId === projectId && cachedSound.status === 'ready') {
-      setSound(cachedSound)
-      if (cachedSound.approvedVariationId) setApproved(true)
-      // Always play the waveform animation for at least 1.5s before showing ready
+    // Cached result — show waveform briefly then reveal
+    if (cachedBgm) {
+      setBgm(cachedBgm)
       setPageState('generating')
       setTimeout(() => setPageState('ready'), 1500)
       return
     }
 
-    // Auto-generate immediately — guard against StrictMode double-fire
+    // Auto-trigger — guard against StrictMode double-fire
     if (!generationStarted.current) {
       generationStarted.current = true
-      setPageState('generating')  // set synchronously so first render shows animation
       generate(cachedScript)
     }
   }, [projectId, generate])
 
-  // ── Elapsed timer ─────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (pageState === 'generating') {
-      setElapsed(0)
-      timerRef.current = setInterval(() => setElapsed(s => s + 1), 1000)
-    } else {
-      if (timerRef.current) clearInterval(timerRef.current)
-    }
-    return () => { if (timerRef.current) clearInterval(timerRef.current) }
-  }, [pageState])
-
-  // ── Approve ───────────────────────────────────────────────────────────────
+  // ── Handlers ─────────────────────────────────────────────────────────────
   const handleApprove = useCallback(() => {
-    if (!sound) return
-    const updated: SoundResult = {
-      ...sound,
-      approvedVariationId: sound.variations[0]?.id ?? null,
-    }
-    sessionStorage.setItem('directors-room-sound', JSON.stringify(updated))
-    setSound(updated)
+    if (!bgm) return
     setApproved(true)
-  }, [sound])
+  }, [bgm])
 
-  // ── Regenerate ────────────────────────────────────────────────────────────
   const handleRegenerate = useCallback(() => {
-    sessionStorage.removeItem('directors-room-sound')
-    setSound(null)
+    sessionStorage.removeItem('directors-room-bgm')
+    setBgm(null)
     setApproved(false)
+    generationStarted.current = true
     generate(script)
   }, [script, generate])
+
+  // ── Generating label changes between phases ───────────────────────────────
+  const generatingLabel = pageState === 'polling'
+    ? 'Waiting for soundtrack…'
+    : 'Composing soundtrack…'
 
   // ── Shell ─────────────────────────────────────────────────────────────────
   return (
@@ -369,19 +502,19 @@ export default function SoundPage() {
       <TopBar
         breadcrumb={[
           { label: 'Projects', href: '/' },
-          { label: 'Video', href: `/video/${projectId}` },
-          { label: 'Sound', current: true },
+          { label: 'Video',    href: `/video/${projectId}` },
+          { label: 'Sound',    current: true },
         ]}
       />
 
       <WorkflowStepper current="sound" projectId={projectId} />
 
-      {/* ── Generating ── */}
-      {pageState === 'generating' && (
-        <GeneratingView elapsed={elapsed} title={script?.title} />
+      {/* Generating / Polling */}
+      {(pageState === 'generating' || pageState === 'polling') && (
+        <GeneratingView elapsed={elapsed} label={generatingLabel} title={script?.title} />
       )}
 
-      {/* ── Error ── */}
+      {/* Error */}
       {pageState === 'error' && (
         <div className="flex-1 flex flex-col items-center justify-center gap-6">
           <div className="flex items-center gap-3 px-4 py-3 rounded border"
@@ -395,22 +528,21 @@ export default function SoundPage() {
         </div>
       )}
 
-      {/* ── Ready ── */}
-      {pageState === 'ready' && sound?.variations[0] && (
+      {/* Ready */}
+      {pageState === 'ready' && bgm && (
         <div className="flex-1 overflow-y-auto w-full">
           <ReadyView
-            variation={sound.variations[0]}
+            bgm={bgm}
             video={video}
             approved={approved}
             onApprove={handleApprove}
             onRegenerate={handleRegenerate}
-            isRegenerating={false}
           />
         </div>
       )}
 
-      {/* ── Bottom bar ── */}
-      {pageState !== 'generating' && (
+      {/* Bottom bar */}
+      {pageState !== 'generating' && pageState !== 'polling' && (
         <div className="flex-none w-full border-t" style={{ borderColor: 'var(--border-subtle)', background: 'var(--surface-1)' }}>
           <div className="flex items-center justify-between py-4"
             style={{ maxWidth: 800, margin: '0 auto', paddingLeft: 40, paddingRight: 40 }}>

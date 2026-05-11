@@ -1,4 +1,4 @@
-import type { ScriptDocument, StoryboardResult, VideoResult, SoundResult } from './types'
+import type { ScriptDocument, StoryboardResult, VideoResult, SoundResult, Bgm } from './types'
 
 const BASE_URL  = process.env.ARGON_BASE_URL!
 const AUTH_TOKEN = process.env.ARGON_AUTH_TOKEN!
@@ -90,6 +90,7 @@ export interface ProjectDetail extends ProjectListItem {
     active_grid: number
     grids: Record<string, { url: string; created_at: number }>
     shots: Record<string, import('./types').StoryboardShot & { video?: { active: number; generations: unknown[] }; audio?: { active: number; generations: unknown[] } }>
+    bgms?: Bgm[]
   } | null
 }
 
@@ -147,6 +148,19 @@ export async function generateStoryboard(projectId: string): Promise<StoryboardR
     projectId,
     shots: storyboard.shots,
     activeGrid: storyboard.active_grid,
+  }
+}
+
+// ─── Music generation: POST /runway/projects/:id/storyboard/music ────────────
+
+export async function generateMusic(projectId: string): Promise<void> {
+  const res = await fetch(`${BASE_URL}/runway/projects/${projectId}/storyboard/music`, {
+    method: 'POST',
+    headers: headers(),
+  })
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error(`generateMusic failed (${res.status}): ${err}`)
   }
 }
 
