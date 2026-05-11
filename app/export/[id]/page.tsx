@@ -273,48 +273,37 @@ export default function ExportPage() {
     const bgmEl   = bgmRef.current
     if (!videoEl) return
 
-    // If we already have a live context and both elements are already sourced,
-    // there's nothing to do — just resume if suspended.
-    const existingCtx = audioCtxRef.current
-    if (
-      existingCtx &&
-      existingCtx.state !== 'closed' &&
-      sourcedElements.current.has(videoEl)
-    ) {
-      if (existingCtx.state === 'suspended') existingCtx.resume()
-      return
+    let ctx = audioCtxRef.current
+
+    // Create context and gains ONCE to avoid double-sourcing the BGM element
+    if (!ctx || ctx.state === 'closed') {
+      ctx = new AudioContext()
+      audioCtxRef.current = ctx
+
+      const videoGain = ctx.createGain()
+      videoGain.gain.value = videoVolume
+      videoGain.connect(ctx.destination)
+      videoGainRef.current = videoGain
+
+      const bgmGain = ctx.createGain()
+      bgmGain.gain.value = bgmVolume
+      bgmGain.connect(ctx.destination)
+      bgmGainRef.current = bgmGain
+    } else {
+      if (ctx.state === 'suspended') ctx.resume()
     }
-
-    // Close the old context so we start clean (new blob = new video element).
-    // This is safe because a new video element is created each time previewBlobUrl changes.
-    existingCtx?.close()
-    // Reset the sourced-elements tracker for the new context session.
-    sourcedElements.current = new WeakSet<HTMLMediaElement>()
-
-    const ctx = new AudioContext()
-    audioCtxRef.current = ctx
-
-    const videoGain = ctx.createGain()
-    videoGain.gain.value = videoVolume
-    videoGain.connect(ctx.destination)
-    videoGainRef.current = videoGain
-
-    const bgmGain = ctx.createGain()
-    bgmGain.gain.value = bgmVolume
-    bgmGain.connect(ctx.destination)
-    bgmGainRef.current = bgmGain
 
     // Route stitched video audio through video gain (guard against double-source)
     if (!sourcedElements.current.has(videoEl)) {
       const videoSrc = ctx.createMediaElementSource(videoEl)
-      videoSrc.connect(videoGain)
+      videoSrc.connect(videoGainRef.current!)
       sourcedElements.current.add(videoEl)
     }
 
     // Route BGM through bgm gain (guard against double-source)
     if (bgmEl && !sourcedElements.current.has(bgmEl)) {
       const bgmSrc = ctx.createMediaElementSource(bgmEl)
-      bgmSrc.connect(bgmGain)
+      bgmSrc.connect(bgmGainRef.current!)
       sourcedElements.current.add(bgmEl)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -347,8 +336,16 @@ export default function ExportPage() {
       bgmEl?.pause()
       setIsPlaying(false)
     } else {
-      // Sync BGM currentTime to video
-      if (bgmEl) bgmEl.currentTime = videoEl.currentTime
+      // Sync BGM currentTime to video (avoid seeking if already in sync to prevent Web Audio bugs in Safari)
+      // If BGM is shorter than the video, we must modulo the target time by the BGM duration so it loops correctly.
+      const targetTime = videoEl.ended ? 0 : videoEl.currentTime
+      if (bgmEl) {
+        const dur = bgmEl.duration > 0 ? bgmEl.duration : 1
+        const bgmTarget = targetTime % dur
+        if (Math.abs(bgmEl.currentTime - bgmTarget) > 0.25) {
+          bgmEl.currentTime = bgmTarget
+        }
+      }
       await Promise.all([
         videoEl.play(),
         bgmEl ? bgmEl.play().catch(() => {}) : Promise.resolve(),
@@ -486,9 +483,18 @@ export default function ExportPage() {
     if (!bgmEl || !activeBgm?.url) return
     const wasPlaying = isPlaying
     if (wasPlaying) bgmEl.pause()
-    bgmEl.src         = activeBgm.url
-    bgmEl.currentTime = videoRef.current?.currentTime ?? 0
-    if (wasPlaying) bgmEl.play().catch(() => {})
+    
+    const onLoaded = () => {
+      const targetTime = videoRef.current?.currentTime ?? 0
+      const dur = bgmEl.duration > 0 ? bgmEl.duration : 1
+      bgmEl.currentTime = targetTime % dur
+      if (wasPlaying) bgmEl.play().catch(() => {})
+      bgmEl.removeEventListener('loadedmetadata', onLoaded)
+    }
+    
+    bgmEl.addEventListener('loadedmetadata', onLoaded)
+    bgmEl.src = activeBgm.url
+    bgmEl.load() // Ensure it starts fetching to trigger loadedmetadata
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeBgmId])
 
@@ -662,6 +668,7 @@ export default function ExportPage() {
           crossOrigin="anonymous"
           preload="auto"
           style={{ display: 'none' }}
+          loop
         />
       )}
 
