@@ -21,6 +21,7 @@ function getActiveImageUrl(shot: StoryboardShot): string | null {
   return gen?.url ?? null
 }
 
+
 const TOTAL_S = 30
 const POLL_INTERVAL_MS = 10_000
 
