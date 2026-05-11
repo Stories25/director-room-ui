@@ -8,7 +8,6 @@ import TranscriptPanel from '@/components/TranscriptPanel'
 import StoryPanel, { StoryExtraction } from '@/components/StoryPanel'
 import WaveformIndicator from '@/components/WaveformIndicator'
 import SessionTimer from '@/components/SessionTimer'
-import ConfirmEndModal from '@/components/ConfirmEndModal'
 import { SessionCredentials, TranscriptEntry } from '@/lib/types'
 import { Sprocket, TopBar } from '@/components/shell/Shell'
 import Button from '@/components/ui/Button'
@@ -16,18 +15,33 @@ import WorkflowStepper from '@/components/WorkflowStepper'
 
 const AvatarView = dynamic(() => import('@/components/AvatarView'), { ssr: false })
 
-type PageState = 'loading' | 'connected' | 'confirming' | 'finishing' | 'error'
+type PageState = 'loading' | 'connected' | 'finishing' | 'error'
 type RightTab = 'transcript' | 'story'
 
 const AVATAR_ID = process.env.NEXT_PUBLIC_AVATAR_ID!
 
 const LOADING_STEPS = [
-  { label: 'Creating session',       minElapsed: 0  },
-  { label: 'Provisioning avatar',    minElapsed: 8  },
-  { label: 'Loading personality',    minElapsed: 20 },
-  { label: 'Establishing video link',minElapsed: 45 },
-  { label: 'Almost ready',           minElapsed: 65 },
+  { label: 'Setting the stage',         minElapsed: 0  },
+  { label: 'Hank is reading your brief',minElapsed: 8  },
+  { label: 'Opening the writers room',  minElapsed: 20 },
+  { label: 'Establishing the link',     minElapsed: 45 },
+  { label: 'Almost in the room',        minElapsed: 65 },
 ]
+
+const FILMMAKING_FACTS = [
+  'The first film ever made was just 2.11 seconds long — it was called "Roundhay Garden Scene" (1888).',
+  'Alfred Hitchcock made cameo appearances in 39 of his 52 major films.',
+  'The shower scene in Psycho took 7 days to shoot and used 70 different camera angles.',
+  'The "Wilhelm Scream" has been used in over 400 films since 1951.',
+  'The longest film ever made is "Logistics" — it runs for 857 hours (35 days).',
+  'Steven Spielberg was rejected from film school three times before getting into USC.',
+  'The first movie to show a flushing toilet was Alfred Hitchcock\u2019s Psycho (1960).',
+  'Toy Story 2 was almost accidentally deleted when someone ran a bad command at Pixar.',
+  'The iconic scream in The Lord of the Rings was actually a recording of a donkey.',
+  'The phrase "lights, camera, action" was first used by director D.W. Griffith in the 1920s.',
+]
+
+const FACT_DURATION_MS = 6000 // each fact visible for 6s
 
 export default function RoomPage() {
   const router = useRouter()
@@ -43,6 +57,8 @@ export default function RoomPage() {
   const [sessionStartedAt, setSessionStartedAt] = useState<number>(0)
   const [timeWarning, setTimeWarning] = useState<'none' | 'warning' | 'critical'>('none')
 
+  const [currentFactIndex, setCurrentFactIndex] = useState(0)
+
   const [extraction, setExtraction] = useState<StoryExtraction>({
     character: null, setting: null, tone: null, action: null, arc: null,
   })
@@ -50,9 +66,24 @@ export default function RoomPage() {
   const extractionDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastHankEntryCount = useRef(0)
 
+  // ── Preload AvatarView chunk while session provisions ──
+  useEffect(() => {
+    // Warm the module cache so dynamic() resolves instantly when credentials arrive
+    import('@/components/AvatarView')
+  }, [])
+
   useEffect(() => {
     document.title = "Story | Director's Room"
   }, [])
+
+  // ── Rotating filmmaking facts — cycle every 6s ──
+  useEffect(() => {
+    if (pageState !== 'loading') return
+    const cycle = setInterval(() => {
+      setCurrentFactIndex(prev => (prev + 1) % FILMMAKING_FACTS.length)
+    }, FACT_DURATION_MS)
+    return () => clearInterval(cycle)
+  }, [pageState])
 
   useEffect(() => {
     if (pageState !== 'loading') return
@@ -66,29 +97,97 @@ export default function RoomPage() {
   useEffect(() => {
     let cancelled = false
     let pollInterval: ReturnType<typeof setInterval> | null = null
+    let pollCount = 0
+    let consecutiveErrors = 0
+    let isCreatingFresh = false
 
     async function createSession() {
       try {
-        const res = await fetch('/api/avatar/session', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ avatarId: AVATAR_ID }),
-        })
-        if (!res.ok) {
-          const err = await res.json()
-          throw new Error(err.error || 'Failed to create session')
-        }
-        const { sessionId } = await res.json()
-        if (cancelled) return
+        let sessionId: string | null = null
 
-        pollInterval = setInterval(async () => {
-          if (cancelled) {
+        // ── Try pre-warmed session from landing page ──
+        try {
+          const prewarm = sessionStorage.getItem('directors-room-prewarm')
+          if (prewarm) {
+            const parsed = JSON.parse(prewarm)
+            if (parsed.sessionId && parsed.avatarId === AVATAR_ID) {
+              sessionId = parsed.sessionId
+              console.log('[room] Using pre-warmed session:', sessionId)
+            }
+            sessionStorage.removeItem('directors-room-prewarm')
+          }
+        } catch {
+          // ignore parse errors
+        }
+
+        // ── Fallback: create fresh session ──
+        if (!sessionId) {
+          const res = await fetch('/api/avatar/session', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ avatarId: AVATAR_ID }),
+          })
+          if (!res.ok) {
+            const err = await res.json()
+            throw new Error(err.error || 'Failed to create session')
+          }
+          const data = await res.json()
+          sessionId = data.sessionId
+          if (cancelled) return
+        }
+
+        // ── Poll status: 1.5s for first 20 polls, then 3s ──
+        const getInterval = () => (pollCount < 20 ? 1500 : 3000)
+
+        const doPoll = async () => {
+          if (cancelled || isCreatingFresh) return
+
+          // Hard timeout after ~120s of polling
+          if (pollCount > 60) {
             if (pollInterval) clearInterval(pollInterval)
+            setError('Session is taking longer than expected. Runway may be experiencing high load. Please try again.')
+            setPageState('error')
             return
           }
+
           try {
             const statusRes = await fetch(`/api/avatar/session/status?id=${sessionId}`)
-            if (!statusRes.ok) return
+
+            // If the session ID is invalid (400/404), abandon it and create fresh
+            if (statusRes.status === 400 || statusRes.status === 404) {
+              console.warn('[room] Stale/invalid session ID, creating fresh session...')
+              if (pollInterval) clearInterval(pollInterval)
+              isCreatingFresh = true
+              const res = await fetch('/api/avatar/session', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ avatarId: AVATAR_ID }),
+              })
+              if (!res.ok) {
+                const err = await res.json()
+                throw new Error(err.error || 'Failed to create fresh session')
+              }
+              const data = await res.json()
+              sessionId = data.sessionId
+              pollCount = 0
+              consecutiveErrors = 0
+              isCreatingFresh = false
+              pollInterval = setInterval(doPoll, getInterval())
+              return
+            }
+
+            if (!statusRes.ok) {
+              consecutiveErrors++
+              pollCount++
+              // After 5 consecutive errors, treat as fatal
+              if (consecutiveErrors > 5) {
+                if (pollInterval) clearInterval(pollInterval)
+                throw new Error(`Status API failed ${consecutiveErrors} times in a row`)
+              }
+              return // transient error — keep polling
+            }
+
+            consecutiveErrors = 0 // reset on success
             const data = await statusRes.json()
             if (cancelled) return
 
@@ -101,6 +200,13 @@ export default function RoomPage() {
               if (pollInterval) clearInterval(pollInterval)
               throw new Error(data.error || 'Session failed to provision')
             }
+            // 'provisioning' — keep polling
+            pollCount++
+            const nextInterval = getInterval()
+            if (pollInterval) {
+              clearInterval(pollInterval)
+              pollInterval = setInterval(doPoll, nextInterval)
+            }
           } catch (err) {
             if (cancelled) return
             if (pollInterval) clearInterval(pollInterval)
@@ -108,7 +214,9 @@ export default function RoomPage() {
             setError(String(err))
             setPageState('error')
           }
-        }, 3000)
+        }
+
+        pollInterval = setInterval(doPoll, getInterval())
       } catch (err) {
         if (cancelled) return
         console.error('[room] Session creation failed:', err)
@@ -174,16 +282,8 @@ export default function RoomPage() {
   }, [])
 
   const handleFinishClick = useCallback(() => {
-    setPageState('confirming')
-  }, [])
-
-  const handleConfirmEnd = useCallback(() => {
     setPageState('finishing')
     window.dispatchEvent(new Event('director-finish'))
-  }, [])
-
-  const handleCancelEnd = useCallback(() => {
-    setPageState('connected')
   }, [])
 
   const handleSessionEnded = useCallback(async (sessionId: string) => {
@@ -249,6 +349,25 @@ export default function RoomPage() {
           <p className="text-xs font-slate" style={{ color: 'var(--text-muted)' }}>
             {elapsed < 10 ? 'This takes about 60–90 seconds' : `~${Math.max(0, 90 - elapsed)}s remaining`}
           </p>
+
+          {/* Rotating filmmaking facts — centered, keeps user engaged */}
+          <div className="flex flex-col items-center justify-center text-center px-6" style={{ maxWidth: 560 }}>
+            <p
+              className="text-[10px] font-slate tracking-[0.2em] uppercase mb-3"
+              style={{ color: 'var(--accent-amber)', opacity: 0.7 }}
+            >
+              Did you know?
+            </p>
+            <p
+              className="text-sm font-light leading-relaxed"
+              style={{
+                color: 'var(--text-secondary)',
+                minHeight: '3.5em',
+              }}
+            >
+              {FILMMAKING_FACTS[currentFactIndex]}
+            </p>
+          </div>
         </div>
       )}
 
@@ -278,17 +397,8 @@ export default function RoomPage() {
         </div>
       )}
 
-      {/* ── Confirmation modal ── */}
-      {pageState === 'confirming' && (
-        <ConfirmEndModal
-          extraction={extraction}
-          onConfirm={handleConfirmEnd}
-          onCancel={handleCancelEnd}
-        />
-      )}
-
       {/* ── Main layout ── */}
-      {(pageState === 'connected' || pageState === 'confirming' || pageState === 'finishing') && credentials && (
+      {(pageState === 'connected' || pageState === 'finishing') && credentials && (
         <div className="flex flex-col h-full w-full overflow-hidden">
           <TopBar
             breadcrumb={[{ label: 'Story', current: true }]}
