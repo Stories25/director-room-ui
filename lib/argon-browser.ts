@@ -119,6 +119,19 @@ export async function generateStoryboard(projectId: string): Promise<StoryboardR
   }
 }
 
+// ─── Music generation: POST /runway/projects/:id/storyboard/music ────────────
+
+export async function generateMusic(projectId: string): Promise<void> {
+  const res = await fetch(`${BASE_URL}/runway/projects/${projectId}/storyboard/music`, {
+    method: 'POST',
+    headers: headers(),
+  })
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error(`Failed to generate music (${res.status}): ${err}`)
+  }
+}
+
 // ─── Step 4a: POST /runway/projects/:id/shots/:shotKey/video ──────────────
 
 function normalizeVideoStatus(raw: string | undefined): import('./types').VideoGenStatus {
