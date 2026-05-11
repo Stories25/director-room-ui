@@ -312,11 +312,13 @@ export default function SoundPage() {
     if (cachedVideo)  setVideo(cachedVideo)
     if (cachedScript) setScript(cachedScript)
 
-    // Already have a result — go straight to ready
+    // Already have a result — show waveform briefly then reveal
     if (cachedSound && cachedSound.projectId === projectId && cachedSound.status === 'ready') {
       setSound(cachedSound)
       if (cachedSound.approvedVariationId) setApproved(true)
-      setPageState('ready')
+      // Always play the waveform animation for at least 1.5s before showing ready
+      setPageState('generating')
+      setTimeout(() => setPageState('ready'), 1500)
       return
     }
 
