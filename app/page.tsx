@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowRight } from 'lucide-react'
+import { ArrowRight, Plus } from 'lucide-react'
 import type { ProjectListItem } from '@/lib/argon'
 import { Sprocket, TopBar, MAX_W } from '@/components/shell/Shell'
 import Button from '@/components/ui/Button'
@@ -132,8 +132,8 @@ function ProjectCard({ project, onClick }: { project: ProjectListItem; onClick: 
 
 function NewSessionButton({ onClick }: { onClick: () => void }) {
   return (
-    <Button variant="secondary" size="sm" onClick={onClick}>
-      New Session
+    <Button variant="primary" size="md" onClick={onClick}>
+      <Plus className="w-4 h-4" /> Build a new story
     </Button>
   )
 }
@@ -143,6 +143,12 @@ export default function LandingPage() {
   const [viewState, setViewState] = useState<ViewState>('loading')
   const [projects, setProjects] = useState<ProjectListItem[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [isStartingSession, setIsStartingSession] = useState(false)
+
+  const handleBeginSession = useCallback(() => {
+    setIsStartingSession(true)
+    router.push('/room')
+  }, [router])
 
   useEffect(() => {
     document.title = "Projects | Director's Room"
@@ -183,7 +189,7 @@ export default function LandingPage() {
 
       <TopBar
         breadcrumb={[{ label: 'Projects', current: true }]}
-        rightAction={<NewSessionButton onClick={() => router.push('/room')} />}
+        rightAction={<NewSessionButton onClick={handleBeginSession} />}
       />
 
       {/* Content */}
@@ -238,10 +244,11 @@ export default function LandingPage() {
                 <Button
                   variant="primary"
                   size="lg"
-                  onClick={() => router.push('/room')}
+                  onClick={handleBeginSession}
+                  disabled={isStartingSession}
                   className="mt-4"
                 >
-                  Begin Session
+                  {isStartingSession ? 'Calling Hank...' : 'Begin Session'}
                 </Button>
 
                 {/* Workflow preview */}
