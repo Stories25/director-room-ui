@@ -147,7 +147,7 @@ export default function StoryboardPage() {
     const pipeline = pipelineRef.current
     const cachedStoryboard = readSessionStoryboard()
 
-    if (cachedStoryboard) {
+    if (cachedStoryboard && cachedStoryboard.projectId === projectId) {
       setStoryboard(cachedStoryboard)
       setUpscaleState(isUpscaledAll(cachedStoryboard.shots) ? 'done' : 'idle')
       setPageState('ready')
