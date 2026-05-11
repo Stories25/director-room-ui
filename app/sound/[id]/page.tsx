@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter, useParams } from 'next/navigation'
+import dynamic from 'next/dynamic'
 import {
   Play, ArrowRight, ArrowLeft, Loader2, Check,
   Download, AlertCircle, RefreshCw,
@@ -36,7 +37,9 @@ function generateWaveform(seed: number, bars = 48): number[] {
   return out
 }
 
-function Waveform({ seed, color, animate, height = 48 }: {
+// Rendered client-only to avoid SSR/client style serialization mismatch
+// (Math.sin produces floats; React style numbers serialize differently on server vs client)
+function WaveformInner({ seed, color, animate, height = 48 }: {
   seed: number; color: string; animate: boolean; height?: number
 }) {
   const bars = generateWaveform(seed)
@@ -47,13 +50,13 @@ function Waveform({ seed, color, animate, height = 48 }: {
           key={i}
           className={animate ? 'breathe' : ''}
           style={{
-            width: 3,
-            height: `${h * 100}%`,
+            width: '3px',
+            height: `${(h * 100).toFixed(2)}%`,
             background: color,
-            borderRadius: 1,
+            borderRadius: '1px',
             opacity: animate ? 0.85 : 0.45,
             animationDelay: animate ? `${i * 35}ms` : undefined,
-            animationDuration: animate ? `${1.6 + (i % 5) * 0.2}s` : undefined,
+            animationDuration: animate ? `${(1.6 + (i % 5) * 0.2).toFixed(1)}s` : undefined,
           }}
         />
       ))}
@@ -61,9 +64,11 @@ function Waveform({ seed, color, animate, height = 48 }: {
   )
 }
 
+const Waveform = dynamic(() => Promise.resolve(WaveformInner), { ssr: false })
+
 // ─── Generating view ──────────────────────────────────────────────────────────
 
-function GeneratingView({ elapsed, title }: { elapsed: number; title?: string }) {
+function GeneratingViewInner({ elapsed, title }: { elapsed: number; title?: string }) {
   const estimate = Math.max(0, 45 - elapsed)
   const bars = generateWaveform(42, 56)
 
@@ -76,13 +81,13 @@ function GeneratingView({ elapsed, title }: { elapsed: number; title?: string })
             key={i}
             className="breathe"
             style={{
-              width: 4,
-              height: `${h * 100}%`,
+              width: '4px',
+              height: `${(h * 100).toFixed(2)}%`,
               background: 'var(--accent-amber)',
-              borderRadius: 2,
+              borderRadius: '2px',
               opacity: 0.6,
               animationDelay: `${i * 45}ms`,
-              animationDuration: `${1.8 + (i % 4) * 0.3}s`,
+              animationDuration: `${(1.8 + (i % 4) * 0.3).toFixed(1)}s`,
             }}
           />
         ))}
@@ -108,6 +113,8 @@ function GeneratingView({ elapsed, title }: { elapsed: number; title?: string })
     </div>
   )
 }
+
+const GeneratingView = dynamic(() => Promise.resolve(GeneratingViewInner), { ssr: false })
 
 // ─── Ready view ───────────────────────────────────────────────────────────────
 
