@@ -1,23 +1,23 @@
 @import "tailwindcss";
 
 :root {
-  /* ── Surfaces (OLED-optimised dark mode) ── */
-  --canvas:      #000000;   /* true OLED black */
-  --surface-1:   #0a0a0a;
-  --surface-2:   #111111;
-  --surface-3:   #161616;
+  /* ── Surfaces (light mode) ── */
+  --canvas:      #ffffff;
+  --surface-1:   #f8f8f8;
+  --surface-2:   #f0f0f0;
+  --surface-3:   #e8e8e8;
 
   /* ── Text hierarchy ── */
-  --text-primary:   #e8e8e8;
-  --text-secondary: #888888;
-  --text-tertiary:  #555555;
-  --text-muted:     #3f3f3f;   /* raised from #333 — passes 4.5:1 on #000 */
-  --text-inverse:   #000000;
+  --text-primary:   #1a1a1a;
+  --text-secondary: #666666;
+  --text-tertiary:  #444444;
+  --text-muted:     #999999;
+  --text-inverse:   #ffffff;
 
   /* ── Borders ── */
-  --border-subtle:   rgba(255,255,255,0.04);
-  --border-standard: rgba(255,255,255,0.07);
-  --border-emphasis: rgba(255,255,255,0.12);
+  --border-subtle:   rgba(0,0,0,0.06);
+  --border-standard: rgba(0,0,0,0.10);
+  --border-emphasis: rgba(0,0,0,0.16);
 
   /* ── Accents (film-world) ── */
   --accent-amber:  #aa8844;
@@ -26,7 +26,7 @@
   --accent-warm:   #8a6a3a;
 
   /* ── Functional ── */
-  --focus-ring:    rgba(170,136,68,0.4);
+  --focus-ring:    rgba(170,136,68,0.5);
 
   /* ── Typography ── */
   --font-display:  var(--font-playfair), 'Georgia', serif;
@@ -70,7 +70,7 @@ body::after {
   inset: 0;
   pointer-events: none;
   z-index: 9999;
-  opacity: 0.035;
+  opacity: 0.012;
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
   background-repeat: repeat;
   background-size: 128px 128px;
@@ -83,7 +83,7 @@ body::after {
 
 /* ── Selection ── */
 ::selection {
-  background: rgba(170,136,68,0.22);
+  background: rgba(170,136,68,0.18);
   color: var(--text-primary);
 }
 
@@ -158,11 +158,11 @@ body::after {
 .shimmer {
   background: linear-gradient(
     90deg,
-    #0f0f0f 0%,
-    #1c1c1c 40%,
-    #252525 50%,
-    #1c1c1c 60%,
-    #0f0f0f 100%
+    #f0f0f0 0%,
+    #e4e4e4 40%,
+    #dcdcdc 50%,
+    #e4e4e4 60%,
+    #f0f0f0 100%
   );
   background-size: 800px 100%;
   animation: shimmer 1.8s infinite linear;

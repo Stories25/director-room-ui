@@ -217,7 +217,7 @@ function VideoPlayer({
         ) : (
           <div
             className="absolute inset-0 flex flex-col items-center justify-center gap-6"
-            style={{ background: 'radial-gradient(ellipse 70% 60% at 50% 50%, rgba(170,136,68,0.04) 0%, transparent 70%)' }}
+            style={{ background: 'radial-gradient(ellipse 70% 60% at 50% 50%, rgba(170,136,68,0.06) 0%, transparent 70%)' }}
           >
             {/* Viewfinder corners */}
             <div className="absolute inset-8 pointer-events-none">
@@ -319,7 +319,7 @@ function VideoPlayer({
               <div className="flex flex-col items-center gap-5 text-center">
                 <div
                   className="w-16 h-16 rounded-full border flex items-center justify-center"
-                  style={{ borderColor: 'var(--border-emphasis)', background: 'rgba(255,255,255,0.03)' }}
+                  style={{ borderColor: 'var(--border-emphasis)', background: 'rgba(0,0,0,0.04)' }}
                 >
                   <Play className="w-7 h-7 ml-0.5" style={{ color: 'var(--text-tertiary)' }} />
                 </div>
@@ -537,7 +537,7 @@ function ClipRow({
           <span
             className="text-[9px] font-slate px-2 py-0.5 rounded uppercase tracking-wide"
             style={{
-              background: isFailed ? 'rgba(204,68,68,0.08)' : isPending ? 'rgba(255,255,255,0.04)' : 'rgba(90,138,90,0.08)',
+              background: isFailed ? 'rgba(204,68,68,0.10)' : isPending ? 'rgba(0,0,0,0.04)' : 'rgba(90,138,90,0.10)',
               color: isFailed ? 'var(--accent-red)' : isPending ? 'var(--text-muted)' : 'var(--accent-green)',
               border: `1px solid ${isFailed ? 'rgba(204,68,68,0.2)' : isPending ? 'var(--border-subtle)' : 'rgba(90,138,90,0.2)'}`,
             }}
@@ -980,7 +980,7 @@ export default function VideoPage() {
           {error && (
             <div
               className="mb-6 rounded border px-4 py-3 flex items-center gap-3"
-              style={{ borderColor: 'rgba(204,68,68,0.2)', background: 'rgba(204,68,68,0.05)' }}
+              style={{ borderColor: 'rgba(204,68,68,0.25)', background: 'rgba(204,68,68,0.07)' }}
             >
               <AlertCircle className="w-4 h-4 flex-none" style={{ color: 'var(--accent-red)' }} />
               <p className="text-xs flex-1" style={{ color: 'var(--accent-red)' }}>{error}</p>
@@ -992,7 +992,7 @@ export default function VideoPage() {
           {skippedShots.length > 0 && (
             <div
               className="mb-4 rounded border px-4 py-3 flex items-center gap-3"
-              style={{ borderColor: 'rgba(170,136,68,0.25)', background: 'rgba(170,136,68,0.05)' }}
+              style={{ borderColor: 'rgba(170,136,68,0.25)', background: 'rgba(170,136,68,0.07)' }}
             >
               <AlertTriangle className="w-4 h-4 flex-none" style={{ color: 'var(--accent-amber)' }} />
               <p className="text-xs flex-1" style={{ color: 'var(--text-secondary)' }}>
@@ -1007,7 +1007,7 @@ export default function VideoPage() {
           {fireFailures.length > 0 && (
             <div
               className="mb-4 rounded border px-4 py-3 flex items-center gap-3"
-              style={{ borderColor: 'rgba(204,68,68,0.2)', background: 'rgba(204,68,68,0.05)' }}
+              style={{ borderColor: 'rgba(204,68,68,0.25)', background: 'rgba(204,68,68,0.07)' }}
             >
               <AlertCircle className="w-4 h-4 flex-none" style={{ color: 'var(--accent-red)' }} />
               <p className="text-xs flex-1" style={{ color: 'var(--accent-red)' }}>

@@ -57,7 +57,7 @@ const sizeStyles: Record<ButtonSize, string> = {
 }
 
 const hoverStyles: Record<ButtonVariant, React.CSSProperties> = {
-  primary: { background: '#fff' },
+  primary: { background: '#1a1a1a' },
   secondary: { borderColor: 'var(--border-emphasis)', color: 'var(--text-primary)' },
   tertiary: { color: 'var(--text-secondary)' },
   destructive: { background: 'rgba(204,68,68,0.2)', borderColor: 'rgba(204,68,68,0.5)' },

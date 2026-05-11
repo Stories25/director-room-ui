@@ -127,7 +127,7 @@ function BgmPicker({ bgms, activeId, onSelect }: {
               className="text-left rounded border px-3 py-2 transition-all duration-150"
               style={{
                 borderColor: isSelected ? 'var(--accent-amber)' : 'var(--border-standard)',
-                background: isSelected ? 'rgba(170,136,68,0.06)' : 'var(--surface-1)',
+                background: isSelected ? 'rgba(170,136,68,0.08)' : 'var(--surface-1)',
                 boxShadow: isSelected ? '0 0 0 1px var(--accent-amber)' : 'none',
               }}
             >
@@ -876,7 +876,7 @@ export default function ExportPage() {
           {stitchState === 'ready' && (
             <div
               className="rounded border p-6"
-              style={{ borderColor: 'rgba(170,136,68,0.3)', background: 'rgba(170,136,68,0.03)' }}
+              style={{ borderColor: 'rgba(170,136,68,0.3)', background: 'rgba(170,136,68,0.05)' }}
             >
               <p className="text-sm font-light mb-1 text-center" style={{ color: 'var(--text-primary)' }}>
                 {exportState === 'done' ? 'Download started' : 'Export your teaser'}
@@ -888,7 +888,7 @@ export default function ExportPage() {
               {/* Error */}
               {exportState === 'error' && (
                 <div className="mb-4 rounded border px-3 py-2 flex items-center gap-2"
-                  style={{ borderColor: 'rgba(204,68,68,0.2)', background: 'rgba(204,68,68,0.05)' }}>
+                  style={{ borderColor: 'rgba(204,68,68,0.25)', background: 'rgba(204,68,68,0.07)' }}>
                   <AlertCircle className="w-3.5 h-3.5 flex-none" style={{ color: 'var(--accent-red)' }} />
                   <p className="text-[10px]" style={{ color: 'var(--accent-red)' }}>{exportError}</p>
                 </div>
@@ -903,10 +903,10 @@ export default function ExportPage() {
                   style={{
                     borderColor: exportState === 'done' ? 'var(--accent-green)' : 'var(--accent-amber)',
                     background: exportState === 'done'
-                      ? 'rgba(90,138,90,0.08)'
+                      ? 'rgba(90,138,90,0.10)'
                       : exportState === 'converting'
-                      ? 'rgba(170,136,68,0.04)'
-                      : 'rgba(170,136,68,0.08)',
+                      ? 'rgba(170,136,68,0.06)'
+                      : 'rgba(170,136,68,0.10)',
                     color: exportState === 'done' ? 'var(--accent-green)' : 'var(--accent-amber)',
                     minWidth: 220,
                     justifyContent: 'center',
@@ -961,7 +961,7 @@ export default function ExportPage() {
           {/* No BGM notice */}
           {!activeBgm && stitchState !== 'stitching' && (
             <div className="mt-4 rounded border px-4 py-3 flex items-center gap-3"
-              style={{ borderColor: 'rgba(170,136,68,0.2)', background: 'rgba(170,136,68,0.03)' }}>
+              style={{ borderColor: 'rgba(170,136,68,0.25)', background: 'rgba(170,136,68,0.05)' }}>
               <Volume2 className="w-4 h-4 flex-none" style={{ color: 'var(--accent-amber)', opacity: 0.7 }} />
               <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
                 No soundtrack found.{' '}

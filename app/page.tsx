@@ -38,7 +38,7 @@ function ProjectCard({ project, onClick }: { project: ProjectListItem; onClick: 
       }}
       onMouseEnter={e => {
         e.currentTarget.style.borderColor = 'var(--border-emphasis)'
-        e.currentTarget.style.boxShadow = '0 4px 32px rgba(170,136,68,0.08)'
+        e.currentTarget.style.boxShadow = '0 4px 32px rgba(170,136,68,0.10)'
         e.currentTarget.style.transform = 'translateY(-2px)'
       }}
       onMouseLeave={e => {
@@ -66,7 +66,7 @@ function ProjectCard({ project, onClick }: { project: ProjectListItem; onClick: 
             {/* Hover overlay */}
             <div
               className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center z-10"
-              style={{ background: 'rgba(8,8,8,0.55)' }}
+              style={{ background: 'rgba(255,255,255,0.65)' }}
             >
               <span
                 className="inline-flex items-center gap-2 px-6 py-2.5 text-[10px] tracking-[0.2em] uppercase border"
@@ -247,7 +247,7 @@ export default function LandingPage() {
               <div
                 className="pointer-events-none absolute inset-0"
                 style={{
-                  background: 'radial-gradient(ellipse 60% 50% at 50% 60%, rgba(255,255,255,0.03) 0%, transparent 70%)',
+                  background: 'radial-gradient(ellipse 60% 50% at 50% 60%, rgba(0,0,0,0.03) 0%, transparent 70%)',
                 }}
               />
               <div className="relative z-10 flex flex-col items-center gap-8 text-center stagger-children">
