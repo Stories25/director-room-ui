@@ -36,8 +36,8 @@ export async function POST(request: NextRequest) {
     const { id: sessionId } = await client.realtimeSessions.create({
       model: 'gwm1_avatars',
       avatar: { type: 'custom', avatarId },
-      personality: HANK_PERSONALITY,
-      startScript: HANK_START_SCRIPT,
+      // personality: HANK_PERSONALITY,
+      // startScript: HANK_START_SCRIPT,
     })
 
     return NextResponse.json({ sessionId })
