@@ -43,7 +43,7 @@ function deriveClips(storyboard: StoryboardResult): VideoClip[] {
     return {
       shotKey: key,
       duration: i === keys.length - 1 ? Math.max(3, TOTAL_S - base * (keys.length - 1)) : base,
-      status: videoGen?.status === 'succeeded' ? 'ready' : videoGen ? 'generating' : 'pending',
+      status: videoGen?.status === 'succeeded' ? 'ready' : videoGen?.status === 'failed' ? 'error' : videoGen ? 'generating' : 'pending',
       prompt: shot?.script_data?.description ?? '',
       thumbnailUrl: getActiveImageUrl(shot) ?? undefined,
       url: videoGen?.status === 'succeeded' ? videoGen.url : undefined,
@@ -392,7 +392,8 @@ function ClipRow({
   const [playing, setPlaying] = useState(false)
   const thumbnail = clip.thumbnailUrl ?? (shot ? getActiveImageUrl(shot) : null)
   const isPending = clip.status === 'pending' || clip.status === 'generating'
-  const hasTaskId = !!(shot?.video?.generations?.length)  // has a task to check
+  const isFailed = clip.status === 'error'
+  const hasTaskId = !!(shot?.video?.generations?.length)
   const sd = shot?.script_data
 
   return (
@@ -502,12 +503,12 @@ function ClipRow({
           <span
             className="text-[9px] font-slate px-2 py-0.5 rounded uppercase tracking-wide"
             style={{
-              background: isPending ? 'rgba(255,255,255,0.04)' : 'rgba(90,138,90,0.08)',
-              color: isPending ? 'var(--text-muted)' : 'var(--accent-green)',
-              border: `1px solid ${isPending ? 'var(--border-subtle)' : 'rgba(90,138,90,0.2)'}`,
+              background: isFailed ? 'rgba(204,68,68,0.08)' : isPending ? 'rgba(255,255,255,0.04)' : 'rgba(90,138,90,0.08)',
+              color: isFailed ? 'var(--accent-red)' : isPending ? 'var(--text-muted)' : 'var(--accent-green)',
+              border: `1px solid ${isFailed ? 'rgba(204,68,68,0.2)' : isPending ? 'var(--border-subtle)' : 'rgba(90,138,90,0.2)'}`,
             }}
           >
-            {clip.status === 'generating' ? 'Rendering' : isPending ? 'Pending' : 'Ready'}
+            {isFailed ? 'Failed' : clip.status === 'generating' ? 'Rendering' : isPending ? 'Pending' : 'Ready'}
           </span>
 
           {/* Framing */}
@@ -589,7 +590,7 @@ function ClipRow({
               }
             </Button>
           )}
-          {!isPending && (
+          {(isFailed || !isPending) && (
             <Button
               variant="secondary"
               size="sm"
