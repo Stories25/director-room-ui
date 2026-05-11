@@ -194,7 +194,6 @@ export default function RoomPage() {
             if (data.status === 'ready') {
               if (pollInterval) clearInterval(pollInterval)
               setCredentials(data.credentials)
-              setSessionStartedAt(Date.now())
               setPageState('connected')
             } else if (data.status === 'failed') {
               if (pollInterval) clearInterval(pollInterval)
@@ -259,6 +258,10 @@ export default function RoomPage() {
       }
     }, 1500)
   }, [transcript])
+
+  const handleSessionActive = useCallback(() => {
+    setSessionStartedAt(Date.now())
+  }, [])
 
   const handleTranscriptUpdate = useCallback((entry: TranscriptEntry) => {
     setTranscript(prev => [...prev, entry])
@@ -413,6 +416,7 @@ export default function RoomPage() {
               onTranscriptUpdate={handleTranscriptUpdate}
               onMicStateChange={handleMicStateChange}
               onSessionEnded={handleSessionEnded}
+              onSessionActive={handleSessionActive}
             />
 
             {/* Viewfinder corner brackets */}
