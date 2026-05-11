@@ -15,10 +15,11 @@ interface AvatarCallUIProps {
   onTranscriptUpdate: (entry: TranscriptEntry) => void
   onMicStateChange: (active: boolean, muted: boolean) => void
   onEnd: (sessionId: string) => void
+  onActive: () => void
   sessionId: string
 }
 
-function AvatarCallUI({ onTranscriptUpdate, onMicStateChange, onEnd, sessionId }: AvatarCallUIProps) {
+function AvatarCallUI({ onTranscriptUpdate, onMicStateChange, onEnd, onActive, sessionId }: AvatarCallUIProps) {
   const { state, end } = useAvatarSession()
   const { isMicEnabled } = useLocalMedia()
 
@@ -27,6 +28,13 @@ function AvatarCallUI({ onTranscriptUpdate, onMicStateChange, onEnd, sessionId }
     const isActive = state === 'active'
     onMicStateChange(isActive, !isMicEnabled)
   }, [state, isMicEnabled, onMicStateChange])
+
+  // Notify parent when session becomes active (avatar ready)
+  useEffect(() => {
+    if (state === 'active') {
+      onActive()
+    }
+  }, [state, onActive])
 
   // Listen to transcript via the correct SDK hook
   // participantIdentity === 'agent' means Hank is speaking; anything else is the user
@@ -60,8 +68,15 @@ function AvatarCallUI({ onTranscriptUpdate, onMicStateChange, onEnd, sessionId }
 
   return (
     <div className="relative h-full w-full">
-      {/* Avatar video — fills the container */}
-      <AvatarVideo className="h-full w-full object-cover" />
+      {/* Avatar video — centered and zoomed to frame the face */}
+      <AvatarVideo
+        className="h-full w-full"
+        style={{
+          objectFit: 'cover',
+          objectPosition: 'center 25%',
+          transform: 'scale(1.15)',
+        }}
+      />
 
       {/* Vignette overlay */}
       <div
@@ -89,6 +104,7 @@ interface AvatarViewProps {
   onTranscriptUpdate: (entry: TranscriptEntry) => void
   onMicStateChange: (active: boolean, muted: boolean) => void
   onSessionEnded: (sessionId: string) => void
+  onSessionActive?: () => void
 }
 
 export default function AvatarView({
@@ -96,6 +112,7 @@ export default function AvatarView({
   onTranscriptUpdate,
   onMicStateChange,
   onSessionEnded,
+  onSessionActive,
 }: AvatarViewProps) {
   return (
     <AvatarSession
@@ -107,6 +124,7 @@ export default function AvatarView({
         onTranscriptUpdate={onTranscriptUpdate}
         onMicStateChange={onMicStateChange}
         onEnd={onSessionEnded}
+        onActive={onSessionActive ?? (() => {})}
         sessionId={credentials.sessionId}
       />
     </AvatarSession>
