@@ -3,7 +3,7 @@
  * Calls Argon directly from the browser — token is intentionally public for now.
  * CORS is open (*) on the Argon server so direct calls are viable.
  */
-import type { ScriptDocument, StoryboardResult, StoryboardShotVideoGeneration, BatchVideoFireResult, BatchVideoStatusResult, VideoGenConfig, SoundResult, SoundTrack } from './types'
+import type { ScriptDocument, StoryboardResult, StoryboardShotVideoGeneration, BatchVideoFireResult, BatchVideoStatusResult, VideoGenConfig, SoundResult, SoundTrack, TimelineState } from './types'
 
 const BASE_URL   = process.env.NEXT_PUBLIC_ARGON_BASE_URL!
 const AUTH_TOKEN = process.env.NEXT_PUBLIC_ARGON_AUTH_TOKEN!
@@ -287,4 +287,18 @@ export async function getSoundTracks(): Promise<SoundTrack[]> {
   }
   const data = await res.json()
   return data.tracks
+}
+
+// ─── PATCH /runway/projects/:id (timeline) ────────────────────────────────
+
+export async function patchTimeline(projectId: string, timeline: TimelineState): Promise<void> {
+  const res = await fetch(`${BASE_URL}/runway/projects/${projectId}`, {
+    method: 'PATCH',
+    headers: headers(),
+    body: JSON.stringify({ timeline }),
+  })
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error(`Failed to patch timeline (${res.status}): ${err}`)
+  }
 }

@@ -163,6 +163,18 @@ export interface Bgm {
 
 export type VideoClipStatus = 'pending' | 'generating' | 'ready' | 'error'
 
+export type TransitionType = 'cut' | 'crossfade' | 'fade_black' | 'wipe_left' | 'wipe_right'
+
+export interface ClipTransition {
+  type: TransitionType
+  durationMs: number
+}
+
+export interface TimelineState {
+  clipOrder: string[]
+  transitions: Record<string, ClipTransition>
+}
+
 export interface VideoClip {
   shotKey: string
   duration: number

@@ -1,4 +1,4 @@
-import type { ScriptDocument, StoryboardResult, VideoResult, SoundResult, Bgm } from './types'
+import type { ScriptDocument, StoryboardResult, VideoResult, SoundResult, Bgm, TimelineState } from './types'
 
 const BASE_URL  = process.env.ARGON_BASE_URL!
 const AUTH_TOKEN = process.env.ARGON_AUTH_TOKEN!
@@ -92,6 +92,7 @@ export interface ProjectDetail extends ProjectListItem {
     shots: Record<string, import('./types').StoryboardShot & { video?: { active: number; generations: unknown[] }; audio?: { active: number; generations: unknown[] } }>
   } | null
   bgms?: Bgm[]
+  timeline?: TimelineState
 }
 
 export async function getProjects(): Promise<ProjectListItem[]> {

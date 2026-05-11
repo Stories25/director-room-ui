@@ -9,15 +9,26 @@ import {
 } from 'lucide-react'
 
 
-import type { Bgm, StoryboardResult, StoryboardShot, VideoClip } from '@/lib/types'
+import type { Bgm, StoryboardResult, StoryboardShot, VideoClip, TimelineState, ClipTransition } from '@/lib/types'
 import { isVideoAll } from '@/lib/types'
+import { patchTimeline } from '@/lib/argon-browser'
 import { Sprocket, TopBar } from '@/components/shell/Shell'
 import WorkflowStepper from '@/components/WorkflowStepper'
 import Button from '@/components/ui/Button'
+import FilmstripTimeline from '@/components/FilmstripTimeline'
+import ClipDetailPanel from '@/components/ClipDetailPanel'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 const TOTAL_S = 30
+
+/** Route external (e.g. S3) URLs through our same-origin proxy so canvas/AudioContext can read them. */
+function proxyUrl(url: string | undefined): string {
+  if (!url) return ''
+  if (url.startsWith('/')) return url
+  if (typeof window !== 'undefined' && url.startsWith(window.location.origin)) return url
+  return `/api/proxy?url=${encodeURIComponent(url)}`
+}
 
 function sortKeys(keys: string[]) {
   return [...keys].sort((a, b) => {
@@ -35,8 +46,9 @@ function getActiveImageUrl(shot: StoryboardShot): string | null {
   return gen?.url ?? null
 }
 
-function deriveClips(storyboard: StoryboardResult): VideoClip[] {
-  const keys = sortKeys(Object.keys(storyboard.shots))
+function deriveClips(storyboard: StoryboardResult, timeline?: TimelineState | null): VideoClip[] {
+  const allKeys = sortKeys(Object.keys(storyboard.shots))
+  const keys = timeline?.clipOrder?.length ? timeline.clipOrder.filter(k => allKeys.includes(k)) : allKeys
   const base = Math.floor(TOTAL_S / Math.max(keys.length, 1))
   return keys.map((key, i) => {
     const shot = storyboard.shots[key]
@@ -52,6 +64,64 @@ function deriveClips(storyboard: StoryboardResult): VideoClip[] {
       url: videoGen?.status === 'succeeded' ? videoGen.url : undefined,
     }
   })
+}
+
+function buildDefaultTimeline(clipOrder: string[]): TimelineState {
+  const transitions: Record<string, ClipTransition> = {}
+  for (let i = 0; i < clipOrder.length - 1; i++) {
+    transitions[`after-${i}`] = { type: 'cut', durationMs: 0 }
+  }
+  return { clipOrder, transitions }
+}
+
+// ─── Transition rendering on canvas ──────────────────────────────────────────
+
+function drawTransitionFrame(
+  ctx: CanvasRenderingContext2D,
+  outgoing: HTMLVideoElement | null,
+  incoming: HTMLVideoElement | null,
+  transition: ClipTransition,
+  progress: number,
+  canvasW: number,
+  canvasH: number,
+) {
+  switch (transition.type) {
+    case 'cut':
+      if (progress < 0.5 && outgoing) {
+        ctx.drawImage(outgoing, 0, 0, canvasW, canvasH)
+      } else if (incoming) {
+        ctx.drawImage(incoming, 0, 0, canvasW, canvasH)
+      }
+      break
+    case 'crossfade': {
+      if (outgoing) { ctx.globalAlpha = 1 - progress; ctx.drawImage(outgoing, 0, 0, canvasW, canvasH) }
+      if (incoming) { ctx.globalAlpha = progress; ctx.drawImage(incoming, 0, 0, canvasW, canvasH) }
+      ctx.globalAlpha = 1
+      break
+    }
+    case 'fade_black': {
+      const hp = progress * 2
+      if (hp < 1) {
+        if (outgoing) { ctx.globalAlpha = 1 - hp; ctx.drawImage(outgoing, 0, 0, canvasW, canvasH) }
+        ctx.globalAlpha = hp; ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, canvasW, canvasH)
+      } else {
+        const fi = hp - 1; ctx.fillStyle = '#000000'; ctx.globalAlpha = 1 - fi; ctx.fillRect(0, 0, canvasW, canvasH)
+        if (incoming) { ctx.globalAlpha = fi; ctx.drawImage(incoming, 0, 0, canvasW, canvasH) }
+      }
+      ctx.globalAlpha = 1
+      break
+    }
+    case 'wipe_left': {
+      if (outgoing) ctx.drawImage(outgoing, 0, 0, canvasW, canvasH)
+      if (incoming) { ctx.save(); ctx.beginPath(); ctx.rect(0, 0, canvasW * progress, canvasH); ctx.clip(); ctx.drawImage(incoming, 0, 0, canvasW, canvasH); ctx.restore() }
+      break
+    }
+    case 'wipe_right': {
+      if (outgoing) ctx.drawImage(outgoing, 0, 0, canvasW, canvasH)
+      if (incoming) { ctx.save(); ctx.beginPath(); ctx.rect(canvasW * (1 - progress), 0, canvasW * progress, canvasH); ctx.clip(); ctx.drawImage(incoming, 0, 0, canvasW, canvasH); ctx.restore() }
+      break
+    }
+  }
 }
 
 // ─── Gain Slider ─────────────────────────────────────────────────────────────
@@ -173,6 +243,9 @@ export default function ExportPage() {
   const [activeBgmId,  setActiveBgmId]  = useState<string | null>(null)
   const [pageState,    setPageState]    = useState<PageState>('loading')
   const [pageError,    setPageError]    = useState<string | null>(null)
+  const [timeline,     setTimeline]     = useState<TimelineState | null>(null)
+  const [selectedClipIdx, setSelectedClipIdx] = useState<number | null>(null)
+  const [timelineSaveError, setTimelineSaveError] = useState<string | null>(null)
 
   // ── Phase 1: Stitch (video-only blob, no BGM baked in)
   const [stitchState,    setStitchState]    = useState<StitchState>('idle')
@@ -205,8 +278,24 @@ export default function ExportPage() {
   // Track which elements have already been claimed by createMediaElementSource —
   // the Web Audio API only allows each HTMLMediaElement to be sourced once per lifetime.
   const sourcedElements = useRef(new WeakSet<HTMLMediaElement>())
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const activeBgm = bgms.find(b => b.id === activeBgmId) ?? bgms[0] ?? null
+
+  const handleTimelineChange = useCallback((newTimeline: TimelineState) => {
+    setTimeline(newTimeline)
+    setTimelineSaveError(null)
+
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
+    saveTimeoutRef.current = setTimeout(async () => {
+      try {
+        await patchTimeline(projectId, newTimeline)
+      } catch (err) {
+        console.error('[export] Failed to save timeline:', err)
+        if (mountedRef.current) setTimelineSaveError('Failed to save timeline changes')
+      }
+    }, 500)
+  }, [projectId])
 
   // ── Cleanup blob URLs on unmount
   useEffect(() => {
@@ -254,6 +343,14 @@ export default function ExportPage() {
         if (existingBgms.length > 0) {
           setBgms(existingBgms)
           setActiveBgmId(existingBgms[existingBgms.length - 1].id)
+        }
+
+        const savedTimeline = project.timeline as TimelineState | null | undefined
+        if (savedTimeline?.clipOrder?.length) {
+          setTimeline(savedTimeline)
+        } else {
+          const defaultOrder = sortKeys(Object.keys(sb.shots))
+          setTimeline(buildDefaultTimeline(defaultOrder))
         }
 
         setPageState('ready')
@@ -369,7 +466,7 @@ export default function ExportPage() {
   // ── Phase 1: Stitch video clips into a preview blob (NO BGM baked in)
   const handleStitch = useCallback(async () => {
     if (!storyboard || !canvasRef.current) return
-    const clips = deriveClips(storyboard)
+    const clips = deriveClips(storyboard, timeline)
     const readyClips = clips.filter(c => c.status === 'ready' && c.url)
     if (readyClips.length === 0) return
 
@@ -418,9 +515,67 @@ export default function ExportPage() {
         if (!mountedRef.current) break
         setStitchClipIdx(i)
 
+        const clip = readyClips[i]
+        const transition = i > 0 && timeline ? timeline.transitions[`after-${i - 1}`] : null
+        const hasTransition = transition && transition.type !== 'cut' && transition.durationMs > 0
+
+        // ── Render transition between previous clip and this clip ──
+        if (hasTransition && i > 0) {
+          const prevClip = readyClips[i - 1]
+          const transDurationMs = transition!.durationMs
+
+          await new Promise<void>((resolve, reject) => {
+            const outVid = document.createElement('video')
+            outVid.src = proxyUrl(prevClip.url)
+            outVid.crossOrigin = 'anonymous'
+            outVid.muted = true
+            outVid.playsInline = true
+            outVid.preload = 'auto'
+
+            const inVid = document.createElement('video')
+            inVid.src = proxyUrl(clip.url)
+            inVid.crossOrigin = 'anonymous'
+            inVid.muted = true
+            inVid.playsInline = true
+            inVid.preload = 'auto'
+
+            let started = false
+            const transStart = Date.now()
+
+            const drawFrame = () => {
+              const elapsed = Date.now() - transStart
+              const progress = Math.min(elapsed / transDurationMs, 1)
+              drawTransitionFrame(ctx, outVid, inVid, transition!, progress, canvas.width, canvas.height)
+              if (progress < 1) { requestAnimationFrame(drawFrame) } else { resolve() }
+            }
+
+            const tryStart = () => {
+              if (started) return
+              if (outVid.readyState >= 2 && inVid.readyState >= 2) {
+                started = true
+                outVid.currentTime = Math.max(0, outVid.duration - (transDurationMs / 1000))
+                inVid.currentTime = 0
+                outVid.play().catch(reject)
+                inVid.play().catch(reject)
+                requestAnimationFrame(drawFrame)
+              }
+            }
+
+            outVid.onloadeddata = tryStart
+            inVid.onloadeddata = tryStart
+            outVid.onerror = () => reject(new Error(`Failed to load clip ${prevClip.shotKey}`))
+            inVid.onerror = () => reject(new Error(`Failed to load clip ${clip.shotKey}`))
+            outVid.load()
+            inVid.load()
+          })
+
+          ctx.clearRect(0, 0, canvas.width, canvas.height)
+        }
+
+        // ── Play clip with audio ──
         await new Promise<void>((resolve, reject) => {
           const vid        = document.createElement('video')
-          vid.src          = readyClips[i].url!
+          vid.src          = proxyUrl(clip.url)
           vid.crossOrigin  = 'anonymous'
           vid.muted        = false
           vid.playsInline  = true
@@ -430,7 +585,7 @@ export default function ExportPage() {
           src.connect(vidGain)
 
           vid.onloadeddata = () => vid.play().catch(reject)
-          vid.onerror      = () => reject(new Error(`Failed to load clip ${readyClips[i].shotKey}`))
+          vid.onerror      = () => reject(new Error(`Failed to load clip ${clip.shotKey}`))
 
           let rafId: number
           const draw = () => {
@@ -466,7 +621,7 @@ export default function ExportPage() {
       setStitchError(String(err))
       setStitchState('error')
     }
-  }, [storyboard])
+  }, [storyboard, timeline])
 
   // ── Wire AudioContext exactly when the video element mounts into the DOM.
   // No stitchState dep — the video element only renders when previewBlobUrl is set
@@ -493,7 +648,7 @@ export default function ExportPage() {
     }
     
     bgmEl.addEventListener('loadedmetadata', onLoaded)
-    bgmEl.src = activeBgm.url
+    bgmEl.src = proxyUrl(activeBgm.url)
     bgmEl.load() // Ensure it starts fetching to trigger loadedmetadata
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeBgmId])
@@ -535,7 +690,7 @@ export default function ExportPage() {
       // ── 3. If BGM is available, fetch it and write to FS, then mix in ffmpeg
       let ffmpegCmd: string[]
       if (activeBgm?.url) {
-        const bgmData = await fetchFile(activeBgm.url)
+        const bgmData = await fetchFile(proxyUrl(activeBgm.url))
         await ff.writeFile('bgm.mp3', bgmData)
 
         // Mix video audio + BGM with gain levels, encode to MP4
@@ -604,13 +759,33 @@ export default function ExportPage() {
   }, [previewBlobUrl, activeBgm, bgmVolume, videoVolume, projectTitle, exportState])
 
   // ── Derived
-  const displayClips    = storyboard ? deriveClips(storyboard) : []
+  const displayClips    = storyboard ? deriveClips(storyboard, timeline) : []
   const readyClipCount  = displayClips.filter(c => c.status === 'ready' && c.url).length
   const totalDuration   = displayClips.reduce((s, c) => s + c.duration, 0) || TOTAL_S
 
+  const selectedClip = selectedClipIdx !== null && timeline
+    ? displayClips.find(c => c.shotKey === timeline.clipOrder[selectedClipIdx])
+    : null
+
+  const incomingTransition = selectedClipIdx !== null && selectedClipIdx > 0 && timeline
+    ? timeline.transitions[`after-${selectedClipIdx - 1}`] ?? { type: 'cut' as const, durationMs: 0 }
+    : { type: 'cut' as const, durationMs: 0 }
+
+  const handleTransitionChange = useCallback((transition: ClipTransition) => {
+    if (selectedClipIdx !== null && selectedClipIdx > 0 && timeline) {
+      handleTimelineChange({
+        ...timeline,
+        transitions: {
+          ...timeline.transitions,
+          [`after-${selectedClipIdx - 1}`]: transition,
+        },
+      })
+    }
+  }, [selectedClipIdx, timeline, handleTimelineChange])
+
   // ─── Loading / Error screens ─────────────────────────────────────────────
 
-  if (pageState === 'loading') {
+  if (pageState === 'loading' || !timeline) {
     return (
       <main className="flex h-screen w-screen flex-col overflow-hidden" style={{ background: 'var(--canvas)' }}>
         <Sprocket />
@@ -664,7 +839,7 @@ export default function ExportPage() {
       {activeBgm?.url && (
         <audio
           ref={bgmRef}
-          src={activeBgm.url}
+          src={proxyUrl(activeBgm.url)}
           crossOrigin="anonymous"
           preload="auto"
           style={{ display: 'none' }}
@@ -673,7 +848,7 @@ export default function ExportPage() {
       )}
 
       <div className="flex-1 overflow-y-auto w-full">
-        <div style={{ maxWidth: 800, margin: '0 auto', paddingTop: 32, paddingBottom: 120, paddingLeft: 40, paddingRight: 40 }}>
+        <div style={{ maxWidth: 960, margin: '0 auto', paddingTop: 32, paddingBottom: 120, paddingLeft: 40, paddingRight: 40 }}>
 
           {/* Header */}
           <div className="mb-8">
@@ -973,13 +1148,55 @@ export default function ExportPage() {
               </p>
             </div>
           )}
+
+          {/* ── Timeline save error ── */}
+          {timelineSaveError && (
+            <div
+              className="mt-4 rounded border px-4 py-3 flex items-center gap-3"
+              style={{ borderColor: 'rgba(170,136,68,0.25)', background: 'rgba(170,136,68,0.07)' }}
+            >
+              <AlertCircle className="w-4 h-4 flex-none" style={{ color: 'var(--accent-amber)' }} />
+              <p className="text-xs flex-1" style={{ color: 'var(--text-secondary)' }}>{timelineSaveError}</p>
+              <Button variant="tertiary" size="sm" onClick={() => setTimelineSaveError(null)}>Dismiss</Button>
+            </div>
+          )}
+
+          {/* ── Clip detail panel ── */}
+          {selectedClip && storyboard && (
+            <div className="mt-6">
+              <ClipDetailPanel
+                clip={selectedClip}
+                clipIndex={selectedClipIdx!}
+                shot={storyboard.shots[selectedClip.shotKey]}
+                incomingTransition={incomingTransition}
+                isRegenerating={false}
+                onRegenerate={() => {}}
+                onTransitionChange={handleTransitionChange}
+                onDeselect={() => setSelectedClipIdx(null)}
+              />
+            </div>
+          )}
+
+          {/* ── Filmstrip timeline ── */}
+          {storyboard && timeline && (
+            <div className="mt-6">
+              <FilmstripTimeline
+                clips={displayClips}
+                shots={storyboard.shots}
+                timeline={timeline}
+                selectedClipIdx={selectedClipIdx}
+                onSelectClip={setSelectedClipIdx}
+                onTimelineChange={handleTimelineChange}
+              />
+            </div>
+          )}
         </div>
       </div>
 
       {/* Bottom bar */}
       <div className="flex-none w-full border-t" style={{ borderColor: 'var(--border-subtle)', background: 'var(--surface-1)' }}>
         <div className="flex items-center justify-between py-4"
-          style={{ maxWidth: 800, margin: '0 auto', paddingLeft: 40, paddingRight: 40 }}>
+          style={{ maxWidth: 960, margin: '0 auto', paddingLeft: 40, paddingRight: 40 }}>
           <Button variant="secondary" size="sm" onClick={() => router.push(`/sound/${projectId}`)}>
             <ArrowLeft className="w-3 h-3" /> Sound
           </Button>
