@@ -8,7 +8,6 @@ import TranscriptPanel from '@/components/TranscriptPanel'
 import StoryPanel, { StoryExtraction } from '@/components/StoryPanel'
 import WaveformIndicator from '@/components/WaveformIndicator'
 import SessionTimer from '@/components/SessionTimer'
-import ConfirmEndModal from '@/components/ConfirmEndModal'
 import { SessionCredentials, TranscriptEntry } from '@/lib/types'
 import { Sprocket, TopBar } from '@/components/shell/Shell'
 import Button from '@/components/ui/Button'
@@ -16,7 +15,7 @@ import WorkflowStepper from '@/components/WorkflowStepper'
 
 const AvatarView = dynamic(() => import('@/components/AvatarView'), { ssr: false })
 
-type PageState = 'loading' | 'connected' | 'confirming' | 'finishing' | 'error'
+type PageState = 'loading' | 'connected' | 'error'
 type RightTab = 'transcript' | 'story'
 
 const AVATAR_ID = process.env.NEXT_PUBLIC_AVATAR_ID!
@@ -285,41 +284,22 @@ export default function RoomPage() {
   }, [])
 
   const handleFinishClick = useCallback(() => {
-    setPageState('confirming')
-  }, [])
-
-  const handleConfirmEnd = useCallback(() => {
-    setPageState('finishing')
-    window.dispatchEvent(new Event('director-finish'))
-  }, [])
-
-  const handleCancelEnd = useCallback(() => {
-    setPageState('connected')
-  }, [])
-
-  const handleSessionEnded = useCallback(async (sessionId: string) => {
-    const transcriptFallback = transcript
-      .map(e => `${e.speaker === 'HANK' ? 'HANK' : 'DIRECTOR'}: ${e.text}`)
-      .join('\n')
-    try {
-      const res = await fetch('/api/format-script', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId, avatarId: AVATAR_ID, transcriptFallback }),
-      })
-      if (!res.ok) {
-        const err = await res.json()
-        throw new Error(err.error || 'Failed to format script')
-      }
-      const { script } = await res.json()
-      sessionStorage.setItem('directors-room-script', JSON.stringify(script))
-      router.push('/script')
-    } catch (err) {
-      console.error('[room] Script formatting failed:', err)
-      setError(String(err))
-      setPageState('error')
+    // Save raw transcript data for the script page to format
+    const transcriptData = {
+      sessionId: credentials?.sessionId,
+      avatarId: AVATAR_ID,
+      transcript: transcript.map(e => ({
+        speaker: e.speaker,
+        text: e.text,
+        timestamp: e.timestamp,
+      })),
     }
-  }, [transcript, router])
+    sessionStorage.setItem('directors-room-transcript', JSON.stringify(transcriptData))
+    // End the avatar session
+    window.dispatchEvent(new Event('director-finish'))
+    // Navigate immediately — script page handles formatting
+    router.push('/script')
+  }, [credentials, transcript, router])
 
   return (
     <main className="flex h-screen w-screen overflow-hidden" style={{ background: 'var(--canvas)' }}>
@@ -411,28 +391,8 @@ export default function RoomPage() {
         </div>
       )}
 
-      {/* ── Finishing overlay ── */}
-      {pageState === 'finishing' && (
-        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-4" style={{ background: 'var(--canvas)' }}>
-          <div className="h-8 w-8 rounded-full border-t animate-spin"
-            style={{ borderColor: 'var(--surface-2)', borderTopColor: 'var(--text-secondary)' }} />
-          <p className="text-sm font-light tracking-wide" style={{ color: 'var(--text-secondary)' }}>
-            Crafting your script...
-          </p>
-        </div>
-      )}
-
-      {/* ── Confirmation modal ── */}
-      {pageState === 'confirming' && (
-        <ConfirmEndModal
-          extraction={extraction}
-          onConfirm={handleConfirmEnd}
-          onCancel={handleCancelEnd}
-        />
-      )}
-
       {/* ── Main layout ── */}
-      {(pageState === 'connected' || pageState === 'confirming' || pageState === 'finishing') && credentials && (
+      {pageState === 'connected' && credentials && (
         <div className="flex flex-col h-full w-full overflow-hidden">
           <TopBar
             breadcrumb={[{ label: 'Story', current: true }]}
@@ -446,7 +406,7 @@ export default function RoomPage() {
               credentials={credentials}
               onTranscriptUpdate={handleTranscriptUpdate}
               onMicStateChange={handleMicStateChange}
-              onSessionEnded={handleSessionEnded}
+              onSessionEnded={() => {}}
               onSessionActive={handleSessionActive}
             />
 
