@@ -8,7 +8,6 @@ import TranscriptPanel from '@/components/TranscriptPanel'
 import StoryPanel, { StoryExtraction } from '@/components/StoryPanel'
 import WaveformIndicator from '@/components/WaveformIndicator'
 import SessionTimer from '@/components/SessionTimer'
-import ConfirmEndModal from '@/components/ConfirmEndModal'
 import { SessionCredentials, TranscriptEntry } from '@/lib/types'
 import { Sprocket, TopBar } from '@/components/shell/Shell'
 import Button from '@/components/ui/Button'
@@ -16,7 +15,7 @@ import WorkflowStepper from '@/components/WorkflowStepper'
 
 const AvatarView = dynamic(() => import('@/components/AvatarView'), { ssr: false })
 
-type PageState = 'loading' | 'connected' | 'confirming' | 'finishing' | 'error'
+type PageState = 'loading' | 'connected' | 'finishing' | 'error'
 type RightTab = 'transcript' | 'story'
 
 const AVATAR_ID = process.env.NEXT_PUBLIC_AVATAR_ID!
@@ -283,16 +282,8 @@ export default function RoomPage() {
   }, [])
 
   const handleFinishClick = useCallback(() => {
-    setPageState('confirming')
-  }, [])
-
-  const handleConfirmEnd = useCallback(() => {
     setPageState('finishing')
     window.dispatchEvent(new Event('director-finish'))
-  }, [])
-
-  const handleCancelEnd = useCallback(() => {
-    setPageState('connected')
   }, [])
 
   const handleSessionEnded = useCallback(async (sessionId: string) => {
@@ -420,17 +411,8 @@ export default function RoomPage() {
         </div>
       )}
 
-      {/* ── Confirmation modal ── */}
-      {pageState === 'confirming' && (
-        <ConfirmEndModal
-          extraction={extraction}
-          onConfirm={handleConfirmEnd}
-          onCancel={handleCancelEnd}
-        />
-      )}
-
       {/* ── Main layout ── */}
-      {(pageState === 'connected' || pageState === 'confirming' || pageState === 'finishing') && credentials && (
+      {(pageState === 'connected' || pageState === 'finishing') && credentials && (
         <div className="flex flex-col h-full w-full overflow-hidden">
           <TopBar
             breadcrumb={[{ label: 'Story', current: true }]}
