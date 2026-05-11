@@ -254,7 +254,7 @@ function buildPrompt(script: ScriptDocument | null): string {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-type PageState = 'loading' | 'generating' | 'ready' | 'error'
+type PageState = 'generating' | 'ready' | 'error'
 
 export default function SoundPage() {
   const router = useRouter()
@@ -264,7 +264,8 @@ export default function SoundPage() {
   const [script, setScript] = useState<ScriptDocument | null>(null)
   const [video, setVideo] = useState<VideoResult | null>(null)
   const [sound, setSound] = useState<SoundResult | null>(null)
-  const [pageState, setPageState] = useState<PageState>('loading')
+  // Start in 'generating' — the boot effect will override to 'ready' if cached
+  const [pageState, setPageState] = useState<PageState>('generating')
   const [error, setError] = useState<string | null>(null)
   const [approved, setApproved] = useState(false)
   const [elapsed, setElapsed] = useState(0)
@@ -315,6 +316,7 @@ export default function SoundPage() {
     // Auto-generate immediately — guard against StrictMode double-fire
     if (!generationStarted.current) {
       generationStarted.current = true
+      setPageState('generating')  // set synchronously so first render shows animation
       generate(cachedScript)
     }
   }, [projectId, generate])
@@ -381,13 +383,6 @@ export default function SoundPage() {
           <Button variant="secondary" size="sm" onClick={() => generate(script)}>
             <RefreshCw className="w-3 h-3" /> Try again
           </Button>
-        </div>
-      )}
-
-      {/* ── Loading ── */}
-      {pageState === 'loading' && (
-        <div className="flex-1 flex items-center justify-center">
-          <Loader2 className="w-6 h-6 animate-spin" style={{ color: 'var(--text-tertiary)' }} />
         </div>
       )}
 

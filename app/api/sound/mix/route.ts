@@ -14,8 +14,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing projectId or prompt' }, { status: 400 })
     }
 
-    // Simulate network latency for the stub (remove in production)
-    await new Promise(r => setTimeout(r, 800))
+    // Simulate real API latency for the stub (remove in production)
+    await new Promise(r => setTimeout(r, 8000))
 
     const variations = [
       {
