@@ -63,12 +63,14 @@ function VideoPlayer({
   onGenerate,
   totalDuration,
   clips,
+  genProgress,
 }: {
   hasVideo: boolean
   isGenerating: boolean
   onGenerate: () => void
   totalDuration: number
   clips?: VideoClip[]
+  genProgress: { done: number; total: number } | null
 }) {
   type StitchState = 'idle' | 'stitching' | 'ready' | 'error'
   const [stitchState, setStitchState] = useState<StitchState>('idle')
@@ -222,10 +224,35 @@ function VideoPlayer({
 
             {/* Generating clips state */}
             {isGenerating && (
-              <div className="flex flex-col items-center gap-4">
+              <div className="flex flex-col items-center gap-5 w-72">
                 <Loader2 className="w-8 h-8 animate-spin" style={{ color: 'var(--text-tertiary)' }} />
-                <p className="text-sm font-slate breathe" style={{ color: 'var(--text-secondary)' }}>Generating video clips…</p>
-                <p className="text-xs font-slate" style={{ color: 'var(--text-muted)' }}>This may take a few minutes</p>
+                {genProgress ? (
+                  <div className="w-full space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-light" style={{ color: 'var(--text-secondary)' }}>
+                        Starting shot {Math.min(genProgress.done + 1, genProgress.total)} of {genProgress.total}
+                      </p>
+                      <span className="text-[10px] font-slate tabular-nums" style={{ color: 'var(--text-muted)' }}>
+                        {genProgress.done}/{genProgress.total}
+                      </span>
+                    </div>
+                    {/* Progress bar */}
+                    <div className="w-full h-1 rounded-full overflow-hidden" style={{ background: 'var(--border-subtle)' }}>
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{
+                          width: `${Math.round((genProgress.done / genProgress.total) * 100)}%`,
+                          background: 'var(--accent-amber)',
+                        }}
+                      />
+                    </div>
+                    <p className="text-[10px] font-slate text-center" style={{ color: 'var(--text-muted)' }}>
+                      Waiting for Runway to render…
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-sm font-slate" style={{ color: 'var(--text-secondary)' }}>Preparing…</p>
+                )}
               </div>
             )}
 
@@ -602,6 +629,7 @@ export default function VideoPage() {
   const [error, setError] = useState<string | null>(null)
   const [regeneratingClip, setRegeneratingClip] = useState<string | null>(null)
   const [checkingClip, setCheckingClip] = useState<string | null>(null)
+  const [genProgress, setGenProgress] = useState<{ done: number; total: number } | null>(null)
 
   const mountedRef = useRef(true)
 
@@ -733,15 +761,21 @@ export default function VideoPage() {
     setPageState('generating')
 
     const keys = sortKeys(Object.keys(storyboard.shots))
+    const total = keys.length
+    setGenProgress({ done: 0, total })
     let current = { ...storyboard, shots: { ...storyboard.shots } }
 
     // Phase 1 — kick off generation for each shot sequentially
-    for (const shotKey of keys) {
+    for (let idx = 0; idx < keys.length; idx++) {
+      const shotKey = keys[idx]
       if (!mountedRef.current) return
 
       // Skip shots that already have a succeeded generation
       const gens = current.shots[shotKey].video?.generations ?? []
-      if (gens.some(g => g.status === 'succeeded')) continue
+      if (gens.some(g => g.status === 'succeeded')) {
+        setGenProgress({ done: idx + 1, total })
+        continue
+      }
 
       try {
         const gen = await generateShotVideo(projectId, shotKey)
@@ -759,6 +793,7 @@ export default function VideoPage() {
           },
         }
         persistStoryboard(current)
+        setGenProgress({ done: idx + 1, total })
       } catch (err) {
         console.error(`[video] generateShotVideo failed for ${shotKey}:`, err)
         if (mountedRef.current) {
@@ -944,6 +979,7 @@ export default function VideoPage() {
               onGenerate={handleGenerate}
               totalDuration={totalDuration}
               clips={displayClips}
+              genProgress={genProgress}
             />
           </div>
 
