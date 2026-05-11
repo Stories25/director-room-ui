@@ -145,14 +145,37 @@ export default function LandingPage() {
   const [error, setError] = useState<string | null>(null)
   const [isStartingSession, setIsStartingSession] = useState(false)
 
-  const handleBeginSession = useCallback(() => {
-    setIsStartingSession(true)
-    router.push('/room')
-  }, [router])
-
   useEffect(() => {
     document.title = "Projects | Director's Room"
   }, [])
+
+  const handleBeginSession = useCallback(async () => {
+    setIsStartingSession(true)
+    // Clean up any stale prewarm data
+    sessionStorage.removeItem('directors-room-prewarm')
+
+    // Fire session creation in background — don't block navigation
+    fetch('/api/avatar/session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ avatarId: process.env.NEXT_PUBLIC_AVATAR_ID }),
+    })
+      .then(async (res) => {
+        if (res.ok) {
+          const { sessionId } = await res.json()
+          sessionStorage.setItem(
+            'directors-room-prewarm',
+            JSON.stringify({ sessionId, avatarId: process.env.NEXT_PUBLIC_AVATAR_ID })
+          )
+        }
+      })
+      .catch((err) => {
+        console.warn('[home] Pre-warm failed, room will create fresh session:', err)
+      })
+
+    // Navigate immediately — provisioning happens in the background
+    router.push('/room')
+  }, [router])
 
   useEffect(() => {
     let cancelled = false
