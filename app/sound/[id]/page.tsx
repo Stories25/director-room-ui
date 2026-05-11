@@ -21,15 +21,15 @@ const GOLD_DIM    = 'rgba(200,146,28,0.14)'
 const VW   = 680
 const LW   = 52    // label column width
 const TW   = VW - LW - 8
-const SVG_H = 220
+const SVG_H = 306
 
 const ROW = {
-  ruler:  { y: 0,   h: 20 },
-  wave:   { y: 24,  h: 44 },
-  shots:  { y: 72,  h: 34 },
-  energy: { y: 110, h: 36 },
-  stage:  { y: 150, h: 18 },
-  vol:    { y: 172, h: 44 },
+  ruler:  { y: 0,   h: 22 },
+  wave:   { y: 32,  h: 54 },
+  shots:  { y: 100, h: 42 },
+  energy: { y: 156, h: 46 },
+  stage:  { y: 214, h: 24 },
+  vol:    { y: 248, h: 52 },
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -746,10 +746,10 @@ export default function SoundPage() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto w-full">
-        <div style={{ maxWidth: 760, margin: '0 auto', paddingTop: 28, paddingBottom: 100, paddingLeft: 32, paddingRight: 32 }}>
+        <div style={{ maxWidth: 760, margin: '0 auto', paddingTop: 36, paddingBottom: 100, paddingLeft: 32, paddingRight: 32 }}>
 
           {/* Header */}
-          <div className="flex items-end justify-between mb-5">
+          <div className="flex items-end justify-between mb-8">
             <div>
               <p className="text-[10px] tracking-[0.25em] uppercase font-slate mb-1.5" style={{ color: 'var(--text-muted)' }}>
                 Step 5 of 6
@@ -765,7 +765,7 @@ export default function SoundPage() {
 
           {/* Error banner */}
           {error && (
-            <div className="mb-5 rounded border px-4 py-3 flex items-center gap-3"
+            <div className="mb-6 rounded border px-4 py-3 flex items-center gap-3"
               style={{ borderColor: 'rgba(204,68,68,0.2)', background: 'rgba(204,68,68,0.05)' }}>
               <AlertCircle className="w-4 h-4 flex-none" style={{ color: 'var(--accent-red)' }} />
               <p className="text-xs flex-1" style={{ color: 'var(--accent-red)' }}>{error}</p>
@@ -778,7 +778,7 @@ export default function SoundPage() {
 
           {/* Selected track banner */}
           <div
-            className="rounded border p-4 mb-5"
+            className="rounded border p-5 mb-6"
             style={{ borderColor: GOLD, background: GOLD_DIM }}
           >
             <div className="flex items-start justify-between gap-4">
@@ -816,7 +816,7 @@ export default function SoundPage() {
 
           {/* Playback bar */}
           <div
-            className="flex items-center gap-3 py-3 mb-3 border-b"
+            className="flex items-center gap-3 py-4 mb-5 border-b"
             style={{ borderColor: 'var(--border-subtle)' }}
           >
             {/* Play / Pause */}
@@ -864,20 +864,20 @@ export default function SoundPage() {
           </div>
 
           {/* Timeline caption */}
-          <p className="text-[9px] font-slate tracking-[0.1em] mb-2" style={{ color: 'var(--text-muted)' }}>
+          <p className="text-[9px] font-slate tracking-[0.1em] mb-3" style={{ color: 'var(--text-muted)' }}>
             UNIFIED TIMELINE — click anywhere to seek · energy and volume are read-only
           </p>
 
           {/* Timeline SVG */}
           <div
-            className="rounded border overflow-hidden"
-            style={{ borderColor: 'var(--border-subtle)', background: 'var(--canvas)' }}
+            className="rounded border"
+            style={{ borderColor: 'var(--border-subtle)', background: 'var(--canvas)', padding: '12px 8px 16px 0' }}
           >
             <TimelineSvg bgm={activeBgm} time={time} onSeek={handleSeek} />
           </div>
 
           {/* Action bar */}
-          <div className="flex items-center justify-between mt-6">
+          <div className="flex items-center justify-between mt-8">
             <Button
               variant="secondary" size="sm"
               onClick={generate} disabled={isGenerating}
