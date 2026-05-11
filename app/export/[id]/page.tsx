@@ -8,6 +8,7 @@ import {
   AlertCircle, Volume2, Film, Music, Settings2, RefreshCw,
 } from 'lucide-react'
 
+
 import type { Bgm, StoryboardResult, StoryboardShot, VideoClip } from '@/lib/types'
 import { isVideoAll } from '@/lib/types'
 import { Sprocket, TopBar } from '@/components/shell/Shell'
