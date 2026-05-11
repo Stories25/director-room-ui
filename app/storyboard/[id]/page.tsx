@@ -308,7 +308,20 @@ export default function StoryboardPage() {
   }
 
   // ── Loading ────────────────────────────────────────────────────────────────
-  if (pageState === 'loading' || !storyboard) return null
+  if (pageState === 'loading' || !storyboard) {
+    return (
+      <main className="flex h-screen w-screen flex-col overflow-hidden" style={{ background: 'var(--canvas)' }}>
+        <Sprocket />
+        <TopBar breadcrumb={[{ label: 'Projects', href: '/' }, { label: 'Storyboard', current: true }]} />
+        <div className="flex-1 flex items-center justify-center">
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 className="w-6 h-6 animate-spin" style={{ color: 'var(--text-tertiary)' }} />
+            <p className="text-xs font-slate" style={{ color: 'var(--text-muted)' }}>Loading project...</p>
+          </div>
+        </div>
+      </main>
+    )
+  }
 
   // ── Ready ──────────────────────────────────────────────────────────────────
   const shotKeys = sortShotKeys(Object.keys(storyboard.shots))
@@ -322,30 +335,6 @@ export default function StoryboardPage() {
           { label: 'Projects', href: '/' },
           { label: 'Storyboard', current: true },
         ]}
-        rightAction={
-          <div className="flex items-center gap-2">
-            {/* Upscale button */}
-            <Button
-              variant={upscaleState === 'done' ? 'success' : upscaleState === 'error' ? 'error' : 'secondary'}
-              size="sm"
-              onClick={handleUpscale}
-              disabled={upscaleState === 'upscaling' || upscaleState === 'done'}
-              title={upscaleState === 'done' ? 'All frames are already upscaled to 2K' : 'Upscale all frames to 2K'}
-              style={{ opacity: upscaleState === 'upscaling' ? 0.6 : 1 }}
-            >
-              {upscaleState === 'upscaling' && <Loader2 className="w-3 h-3 animate-spin" />}
-              {upscaleState === 'done'      && <><Check className="w-3 h-3" /> Upscaled 2K</>}
-              {upscaleState === 'upscaling' && <>Upscaling</>}
-              {upscaleState === 'idle'      && <><ArrowUp className="w-3 h-3" /> Upscale 2K</>}
-              {upscaleState === 'error'     && <><ArrowUp className="w-3 h-3" /> Retry Upscale</>}
-            </Button>
-
-            {/* Regenerate button */}
-            <Button variant="secondary" size="sm" onClick={handleRegenerate}>
-              <RefreshCw className="w-3 h-3" /> Regenerate
-            </Button>
-          </div>
-        }
       />
 
       <WorkflowStepper current="storyboard" projectId={projectId} />
@@ -353,6 +342,40 @@ export default function StoryboardPage() {
       {/* Grid */}
       <div className="flex-1 overflow-y-auto w-full">
         <div style={{ width: MAX_W, margin: '0 auto', paddingTop: 32, paddingBottom: 32 }}>
+          {/* ── Page header ── */}
+          <div className="flex items-end justify-between mb-8">
+            <div>
+              <p className="text-[10px] tracking-[0.25em] uppercase font-slate mb-1.5" style={{ color: 'var(--text-muted)' }}>
+                Step 3 of 5
+              </p>
+              <h1 className="text-2xl font-display font-light" style={{ color: 'var(--text-primary)' }}>
+                Storyboard
+              </h1>
+            </div>
+            <div className="flex items-center gap-3">
+              {/* Upscale button */}
+              <Button
+                variant={upscaleState === 'done' ? 'success' : upscaleState === 'error' ? 'error' : 'secondary'}
+                size="sm"
+                onClick={handleUpscale}
+                disabled={upscaleState === 'upscaling' || upscaleState === 'done'}
+                title={upscaleState === 'done' ? 'All frames are already upscaled to 2K' : 'Upscale all frames to 2K'}
+                style={{ opacity: upscaleState === 'upscaling' ? 0.6 : 1 }}
+              >
+                {upscaleState === 'upscaling' && <Loader2 className="w-3 h-3 animate-spin" />}
+                {upscaleState === 'done'      && <><Check className="w-3 h-3" /> Upscaled 2K</>}
+                {upscaleState === 'upscaling' && <>Upscaling</>}
+                {upscaleState === 'idle'      && <><ArrowUp className="w-3 h-3" /> Upscale 2K</>}
+                {upscaleState === 'error'     && <><ArrowUp className="w-3 h-3" /> Retry Upscale</>}
+              </Button>
+
+              {/* Regenerate button */}
+              <Button variant="secondary" size="sm" onClick={handleRegenerate}>
+                <RefreshCw className="w-3 h-3" /> Regenerate
+              </Button>
+            </div>
+          </div>
+
           <div className="grid gap-6" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
             {shotKeys.flatMap((key, i) => {
               const scene = Number(key.split('.')[0])
