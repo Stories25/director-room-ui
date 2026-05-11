@@ -22,12 +22,14 @@ type RightTab = 'transcript' | 'story'
 const AVATAR_ID = process.env.NEXT_PUBLIC_AVATAR_ID!
 
 const LOADING_STEPS = [
-  { label: 'Creating session',       minElapsed: 0  },
-  { label: 'Provisioning avatar',    minElapsed: 8  },
-  { label: 'Loading personality',    minElapsed: 20 },
-  { label: 'Establishing video link',minElapsed: 45 },
-  { label: 'Almost ready',           minElapsed: 65 },
+  { label: 'Setting the stage',         minElapsed: 0  },
+  { label: 'Hank is reading your brief',minElapsed: 8  },
+  { label: 'Opening the writers room',  minElapsed: 20 },
+  { label: 'Establishing the link',     minElapsed: 45 },
+  { label: 'Almost in the room',        minElapsed: 65 },
 ]
+
+const HANK_OPENING = `Alright. You have my attention — and about five minutes before you lose it. Tell me: what is the one image you want burned into someone\u2019s brain. Thirty seconds. Go.`
 
 export default function RoomPage() {
   const router = useRouter()
@@ -43,6 +45,8 @@ export default function RoomPage() {
   const [sessionStartedAt, setSessionStartedAt] = useState<number>(0)
   const [timeWarning, setTimeWarning] = useState<'none' | 'warning' | 'critical'>('none')
 
+  const [typedQuote, setTypedQuote] = useState('')
+
   const [extraction, setExtraction] = useState<StoryExtraction>({
     character: null, setting: null, tone: null, action: null, arc: null,
   })
@@ -54,6 +58,16 @@ export default function RoomPage() {
     document.title = "Story | Director's Room"
   }, [])
 
+  // Typewriter effect — starts at 55s elapsed, types Hank's opening line
+  useEffect(() => {
+    if (elapsed < 55 || pageState !== 'loading') return
+    if (typedQuote.length >= HANK_OPENING.length) return
+    const t = setTimeout(() => {
+      setTypedQuote(HANK_OPENING.slice(0, typedQuote.length + 1))
+    }, 28) // ~28ms per character ≈ comfortable reading speed
+    return () => clearTimeout(t)
+  }, [elapsed, typedQuote, pageState])
+
   useEffect(() => {
     if (pageState !== 'loading') return
     const t = setInterval(() => setElapsed(s => s + 1), 1000)
@@ -64,8 +78,12 @@ export default function RoomPage() {
   const loadingProgress = Math.min((elapsed / 90) * 100, 95)
 
   useEffect(() => {
+    let cancelled = false
+    let pollInterval: ReturnType<typeof setInterval> | null = null
+
     async function createSession() {
       try {
+        // Step 1: Create session — returns immediately with sessionId (~2s)
         const res = await fetch('/api/avatar/session', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -75,17 +93,52 @@ export default function RoomPage() {
           const err = await res.json()
           throw new Error(err.error || 'Failed to create session')
         }
-        const creds: SessionCredentials = await res.json()
-        setCredentials(creds)
-        setSessionStartedAt(Date.now())
-        setPageState('connected')
+        const { sessionId } = await res.json()
+        if (cancelled) return
+
+        // Step 2: Poll status every 3s until READY
+        pollInterval = setInterval(async () => {
+          if (cancelled) {
+            if (pollInterval) clearInterval(pollInterval)
+            return
+          }
+          try {
+            const statusRes = await fetch(`/api/avatar/session/status?id=${sessionId}`)
+            if (!statusRes.ok) return // transient error — keep polling
+            const data = await statusRes.json()
+            if (cancelled) return
+
+            if (data.status === 'ready') {
+              if (pollInterval) clearInterval(pollInterval)
+              setCredentials(data.credentials)
+              setSessionStartedAt(Date.now())
+              setPageState('connected')
+            } else if (data.status === 'failed') {
+              if (pollInterval) clearInterval(pollInterval)
+              throw new Error(data.error || 'Session failed to provision')
+            }
+            // 'provisioning' — keep polling
+          } catch (err) {
+            if (cancelled) return
+            if (pollInterval) clearInterval(pollInterval)
+            console.error('[room] Status poll failed:', err)
+            setError(String(err))
+            setPageState('error')
+          }
+        }, 3000)
       } catch (err) {
+        if (cancelled) return
         console.error('[room] Session creation failed:', err)
         setError(String(err))
         setPageState('error')
       }
     }
+
     createSession()
+    return () => {
+      cancelled = true
+      if (pollInterval) clearInterval(pollInterval)
+    }
   }, [])
 
   useEffect(() => {
@@ -180,7 +233,20 @@ export default function RoomPage() {
 
       {/* ── Loading state ── */}
       {pageState === 'loading' && (
-        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-10" style={{ background: 'var(--canvas)' }}>
+        <div
+          className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-10"
+          style={{
+            background: 'var(--canvas)',
+            backgroundImage: 'radial-gradient(ellipse 70% 60% at 50% 45%, rgba(170,136,68,0.04) 0%, transparent 70%)',
+          }}
+        >
+          {/* Film grain overlay — same as connected room */}
+          <div className="pointer-events-none absolute inset-0" style={{ opacity: 0.025,
+            backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E")`,
+            backgroundRepeat: 'repeat', backgroundSize: '128px 128px',
+          }} />
+
+          {/* Step list */}
           <div className="space-y-3 w-64">
             {LOADING_STEPS.map((step, i) => {
               const done = step.minElapsed < elapsed
@@ -189,30 +255,56 @@ export default function RoomPage() {
                 <div key={i} className="flex items-center gap-3">
                   <div
                     className="h-1.5 w-1.5 rounded-full flex-none transition-all duration-500"
-                    style={{ background: done ? 'var(--accent-green)' : active ? 'var(--text-tertiary)' : 'var(--text-muted)' }}
+                    style={{ background: done ? 'var(--accent-green)' : active ? 'var(--accent-amber)' : 'var(--text-muted)' }}
                   />
                   <p
                     className={`text-xs transition-colors duration-500 ${active ? 'font-display' : 'font-slate'}`}
                     style={{ color: done ? 'var(--text-tertiary)' : active ? 'var(--text-secondary)' : 'var(--text-muted)' }}
                   >
                     {step.label}
-                    {done && <Check className="w-3 h-3 inline" style={{ color: 'var(--accent-green)' }} />}
+                    {done && <Check className="w-3 h-3 inline ml-1.5" style={{ color: 'var(--accent-green)' }} />}
                   </p>
                 </div>
               )
             })}
           </div>
 
+          {/* Progress bar */}
           <div className="w-64 h-px overflow-hidden" style={{ background: 'var(--surface-2)' }}>
             <div
               className="h-full transition-all duration-1000"
-              style={{ background: 'var(--text-tertiary)', width: `${loadingProgress}%` }}
+              style={{ background: 'var(--accent-amber)', opacity: 0.6, width: `${loadingProgress}%` }}
             />
           </div>
 
           <p className="text-xs font-slate" style={{ color: 'var(--text-muted)' }}>
             {elapsed < 10 ? 'This takes about 60–90 seconds' : `~${Math.max(0, 90 - elapsed)}s remaining`}
           </p>
+
+          {/* Hank's opening line — typewriter, appears at 55s */}
+          {elapsed >= 55 && (
+            <div
+              className="absolute bottom-16 left-1/2 fade-up"
+              style={{ transform: 'translateX(-50%)', maxWidth: 480, textAlign: 'center' }}
+            >
+              <p
+                className="text-xs font-slate"
+                style={{ color: 'var(--text-muted)', letterSpacing: '0.02em', lineHeight: 1.7 }}
+              >
+                <span style={{ color: 'var(--accent-amber)', opacity: 0.6, marginRight: 8 }}>
+                  Hank —
+                </span>
+                {typedQuote}
+                {/* blinking cursor */}
+                {typedQuote.length < HANK_OPENING.length && (
+                  <span
+                    className="breathe"
+                    style={{ display: 'inline-block', width: 1, height: '0.9em', background: 'var(--accent-amber)', marginLeft: 2, verticalAlign: 'text-bottom', opacity: 0.7 }}
+                  />
+                )}
+              </p>
+            </div>
+          )}
         </div>
       )}
 

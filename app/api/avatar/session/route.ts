@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import getRunwayClient from '@/lib/runway'
 
+// Allow up to 30s for the create call — well within Vercel/host limits
+export const maxDuration = 30
+
 const HANK_PERSONALITY = `You are a brilliant, sardonic, and deeply literary screenwriter with a sharp wit and an uncanny instinct for story. You are charming, direct, and always honest. You do not suffer vague ideas or weak pitches.
 
 Your job is to interview a director and extract everything needed to build a 30-second teaser film. Conduct a real creative conversation, not a checklist. Make the director feel like they are talking to someone who genuinely cares about great cinema.
@@ -21,6 +24,12 @@ Rules:
 
 const HANK_START_SCRIPT = `Alright. You have my attention and about five minutes before you lose it. Tell me: what is the one image you want burned into someones brain. Thirty seconds. Go.`
 
+/**
+ * POST /api/avatar/session
+ * Creates a Runway realtime session and returns { sessionId } immediately.
+ * The client then polls GET /api/avatar/session/status?id=<sessionId>
+ * until status === 'ready', at which point credentials are returned.
+ */
 export async function POST(request: NextRequest) {
   try {
     const { avatarId } = await request.json()
@@ -31,7 +40,6 @@ export async function POST(request: NextRequest) {
 
     const client = getRunwayClient()
 
-    // 1. Create session
     const { id: sessionId } = await client.realtimeSessions.create({
       model: 'gwm1_avatars',
       avatar: { type: 'custom', avatarId },
@@ -39,58 +47,12 @@ export async function POST(request: NextRequest) {
       startScript: HANK_START_SCRIPT,
     })
 
-    // 2. Poll until READY — provisioning takes up to ~90s, so we poll 120 times x 1s
-    let sessionKey: string | undefined
-    for (let i = 0; i < 120; i++) {
-      const session = await client.realtimeSessions.retrieve(sessionId)
-
-      if (session.status === 'READY') {
-        sessionKey = session.sessionKey ?? undefined
-        break
-      }
-      if (session.status === 'FAILED') {
-        return NextResponse.json(
-          { error: 'Session failed to provision', details: session.failure },
-          { status: 500 }
-        )
-      }
-      await new Promise((r) => setTimeout(r, 1000))
-    }
-
-    if (!sessionKey) {
-      return NextResponse.json({ error: 'Session timed out during provisioning' }, { status: 504 })
-    }
-
-    // 3. Consume session to get WebRTC credentials
-    const consumeResponse = await fetch(
-      `https://api.dev.runwayml.com/v1/realtime_sessions/${sessionId}/consume`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${sessionKey}`,
-          'X-Runway-Version': '2024-11-06',
-          'Content-Type': 'application/json',
-        },
-      }
-    )
-
-    if (!consumeResponse.ok) {
-      const err = await consumeResponse.text()
-      return NextResponse.json({ error: 'Failed to consume session', details: err }, { status: 500 })
-    }
-
-    const credentials = await consumeResponse.json()
-
-    return NextResponse.json({
-      sessionId,
-      serverUrl: credentials.url,
-      token: credentials.token,
-      roomName: credentials.roomName,
-    })
+    // Return immediately — client polls /api/avatar/session/status?id=sessionId
+    return NextResponse.json({ sessionId })
   } catch (error) {
-    console.error('[avatar/session] Error:', error)
+    console.error('[avatar/session] Create failed:', error)
     return NextResponse.json(
-      { error: 'Internal server error', details: String(error) },
+      { error: 'Failed to create session', details: String(error) },
       { status: 500 }
     )
   }

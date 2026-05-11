@@ -29,12 +29,38 @@ function AvatarCallUI({ onTranscriptUpdate, onMicStateChange, onEnd, sessionId }
   }, [state, isMicEnabled, onMicStateChange])
 
   // Listen to transcript via the correct SDK hook
-  // participantIdentity === 'agent' means Hank is speaking; anything else is the user
+  //
+  // Speaker detection — in priority order:
+  // 1. Segment ID prefix: Runway data-channel messages use ID format
+  //    `runway-transcription-${role}-${turn}`, so `assistant` = Hank, `user` = YOU
+  // 2. participantIdentity: LiveKit native transcription sets this to the
+  //    room participant identity — 'agent' / 'worker' variants = Hank
+  // 3. Fallback: anything unrecognised → YOU (safe default)
   useTranscription(
     useCallback(
       (entry) => {
         if (!entry.final) return // only capture finalized segments
-        const speaker = entry.participantIdentity === 'agent' ? 'HANK' : 'YOU'
+
+        let speaker: 'HANK' | 'YOU'
+
+        const id = entry.id ?? ''
+        const identity = (entry.participantIdentity ?? '').toLowerCase()
+
+        if (id.startsWith('runway-transcription-assistant-')) {
+          speaker = 'HANK'
+        } else if (id.startsWith('runway-transcription-user-')) {
+          speaker = 'YOU'
+        } else if (
+          identity === 'agent' ||
+          identity.includes('agent') ||
+          identity.includes('worker') ||
+          identity.includes('assistant')
+        ) {
+          speaker = 'HANK'
+        } else {
+          speaker = 'YOU'
+        }
+
         onTranscriptUpdate({
           speaker,
           text: entry.text,
