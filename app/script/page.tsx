@@ -28,6 +28,14 @@ export default function ScriptPage() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    if (script?.title) {
+      document.title = `${script.title} | Script`
+    } else {
+      document.title = "Script | Director's Room"
+    }
+  }, [script?.title])
+
+  useEffect(() => {
     if (sessionData) return
     router.push('/')
   }, [router, sessionData])

@@ -51,6 +51,10 @@ export default function RoomPage() {
   const lastHankEntryCount = useRef(0)
 
   useEffect(() => {
+    document.title = "Story | Director's Room"
+  }, [])
+
+  useEffect(() => {
     if (pageState !== 'loading') return
     const t = setInterval(() => setElapsed(s => s + 1), 1000)
     return () => clearInterval(t)

@@ -130,6 +130,14 @@ export default function StoryboardPage() {
   const [error, setError] = useState<string | null>(null)
   const [upscaleState, setUpscaleState] = useState<UpscaleState>('idle')
 
+  useEffect(() => {
+    if (storyboard?.projectTitle) {
+      document.title = `${storyboard.projectTitle} | Storyboard`
+    } else {
+      document.title = "Storyboard | Director's Room"
+    }
+  }, [storyboard?.projectTitle])
+
   // Pipeline ref — populated on mount from sessionStorage
   const pipelineRef = useRef(pipelineState.read())
 
@@ -187,6 +195,7 @@ export default function StoryboardPage() {
       setCurrentStep('storyboard')
       if (pl) pipelineState.write({ ...pl, projectId: pid, step: 'storyboard' })
       const sb = await generateStoryboard(pid)
+      sb.projectTitle = pl?.script?.title
 
       // Done
       pipelineState.clear()
@@ -212,6 +221,7 @@ export default function StoryboardPage() {
         if (pl) pipelineState.write({ ...pl, step: 'storyboard' })
         generateStoryboard(projectId)
           .then(sb => {
+            sb.projectTitle = pl?.script?.title
             pipelineState.clear()
             sessionStorage.setItem('directors-room-storyboard', JSON.stringify(sb))
             setStoryboard(sb)
@@ -244,6 +254,7 @@ export default function StoryboardPage() {
           }
           const sb: StoryboardResult = {
             projectId: project.id,
+            projectTitle: project.title,
             shots: project.storyboard.shots,
             activeGrid: project.storyboard.active_grid,
           }
@@ -289,6 +300,7 @@ export default function StoryboardPage() {
     setUpscaleState('upscaling')
     try {
       const upscaled = await upscaleStoryboard(projectId)
+      upscaled.projectTitle = storyboard.projectTitle
       sessionStorage.setItem('directors-room-storyboard', JSON.stringify(upscaled))
       setStoryboard(upscaled)
       setUpscaleState('done')

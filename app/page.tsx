@@ -145,6 +145,10 @@ export default function LandingPage() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    document.title = "Projects | Director's Room"
+  }, [])
+
+  useEffect(() => {
     let cancelled = false
     async function load() {
       try {

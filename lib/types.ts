@@ -102,6 +102,7 @@ export interface StoryboardShot {
 
 export interface StoryboardResult {
   projectId: string
+  projectTitle?: string
   shots: Record<string, StoryboardShot>
   activeGrid: number
 }

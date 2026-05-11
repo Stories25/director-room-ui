@@ -331,6 +331,14 @@ export default function SoundPage() {
   const [promptOpen, setPromptOpen] = useState(false)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
+  useEffect(() => {
+    if (script?.title) {
+      document.title = `${script.title} | Sound`
+    } else {
+      document.title = "Sound | Director's Room"
+    }
+  }, [script?.title])
+
   // ── Boot ──────────────────────────────────────────────────────────────────
   useEffect(() => {
     const cachedScript = readSession<ScriptDocument>('directors-room-script')

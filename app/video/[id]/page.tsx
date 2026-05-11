@@ -633,6 +633,14 @@ export default function VideoPage() {
 
   const mountedRef = useRef(true)
 
+  useEffect(() => {
+    if (storyboard?.projectTitle) {
+      document.title = `${storyboard.projectTitle} | Video`
+    } else {
+      document.title = "Video | Director's Room"
+    }
+  }, [storyboard?.projectTitle])
+
   const persistStoryboard = useCallback((sb: StoryboardResult) => {
     sessionStorage.setItem('directors-room-storyboard', JSON.stringify(sb))
     setStoryboard(sb)
@@ -681,7 +689,12 @@ export default function VideoPage() {
           if (res.ok) {
             const { project } = await res.json()
             if (project?.storyboard?.shots) {
-              current = { projectId: project.id, shots: project.storyboard.shots, activeGrid: project.storyboard.active_grid }
+              current = {
+                projectId: project.id,
+                projectTitle: project.title,
+                shots: project.storyboard.shots,
+                activeGrid: project.storyboard.active_grid,
+              }
               persistStoryboard(current)
             }
           }
@@ -731,6 +744,7 @@ export default function VideoPage() {
         }
         const sb: StoryboardResult = {
           projectId: project.id,
+          projectTitle: project.title,
           shots: project.storyboard.shots,
           activeGrid: project.storyboard.active_grid,
         }
