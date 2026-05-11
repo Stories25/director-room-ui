@@ -629,13 +629,20 @@ export default function SoundPage() {
               <ArrowLeft className="w-3 h-3" /> Video
             </Button>
             {approved && (
-              <div className="flex items-center gap-2">
-                <div className="h-1.5 w-1.5 rounded-full"
-                  style={{ background: 'var(--accent-green)' }} />
-                <span className="text-[10px] font-slate"
-                  style={{ color: 'var(--accent-green)' }}>
-                  Soundtrack approved
-                </span>
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <div className="h-1.5 w-1.5 rounded-full"
+                    style={{ background: 'var(--accent-green)' }} />
+                  <span className="text-[10px] font-slate"
+                    style={{ color: 'var(--accent-green)' }}>
+                    Soundtrack approved
+                  </span>
+                </div>
+                <Button variant="primary" size="md"
+                  onClick={() => router.push(`/export/${projectId}`)}
+                  className="group gap-2">
+                  Export Video <ArrowRight className="w-3 h-3 transition-transform duration-200 group-hover:translate-x-1" />
+                </Button>
               </div>
             )}
           </div>

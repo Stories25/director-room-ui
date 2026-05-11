@@ -1,9 +1,9 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { Mic, FileText, LayoutGrid, Film, Music } from 'lucide-react'
+import { Mic, FileText, LayoutGrid, Film, Music, Download } from 'lucide-react'
 
-export type WorkflowStep = 'story' | 'script' | 'storyboard' | 'video' | 'sound'
+export type WorkflowStep = 'story' | 'script' | 'storyboard' | 'video' | 'sound' | 'export'
 
 interface WorkflowStepperProps {
   current: WorkflowStep
@@ -12,13 +12,14 @@ interface WorkflowStepperProps {
 
 const STEPS: { key: WorkflowStep; label: string; icon: React.ReactNode; path: (id?: string) => string }[] = [
   { key: 'story', label: 'Story', icon: <Mic className="w-3.5 h-3.5" />, path: () => '/room' },
-  { key: 'script', label: 'Script', icon: <FileText className="w-3.5 h-3.5" />, path: () => '/script' },
+  { key: 'script', label: 'Script', icon: <FileText className="w-3.5 h-3.5" />, path: (id) => id ? `/script/${id}` : '/script' },
   { key: 'storyboard', label: 'Storyboard', icon: <LayoutGrid className="w-3.5 h-3.5" />, path: (id) => id ? `/storyboard/${id}` : '/script' },
   { key: 'video', label: 'Video', icon: <Film className="w-3.5 h-3.5" />, path: (id) => id ? `/video/${id}` : '/script' },
   { key: 'sound', label: 'Sound', icon: <Music className="w-3.5 h-3.5" />, path: (id) => id ? `/sound/${id}` : '/script' },
+  { key: 'export', label: 'Export', icon: <Download className="w-3.5 h-3.5" />, path: (id) => id ? `/export/${id}` : '/script' },
 ]
 
-const STEP_ORDER: WorkflowStep[] = ['story', 'script', 'storyboard', 'video', 'sound']
+const STEP_ORDER: WorkflowStep[] = ['story', 'script', 'storyboard', 'video', 'sound', 'export']
 
 function stepIndex(step: WorkflowStep): number {
   return STEP_ORDER.indexOf(step)
