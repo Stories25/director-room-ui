@@ -48,6 +48,7 @@ export async function GET(request: NextRequest) {
       const err = await consumeResponse.text()
       return NextResponse.json({ status: 'failed', error: 'Failed to consume session', details: err })
     }
+    
 
     const creds = await consumeResponse.json()
 
