@@ -41,15 +41,16 @@ function deriveClips(storyboard: StoryboardResult): VideoClip[] {
   return keys.map((key, i) => {
     const shot = storyboard.shots[key]
     const videoGen = shot.video?.generations?.[shot.video.generations.length - 1]
+    const effectiveStatus = (videoGen as any)?.fetch_status || videoGen?.status
     return {
       shotKey: key,
       duration: i === keys.length - 1 ? Math.max(3, TOTAL_S - base * (keys.length - 1)) : base,
-      status: videoGen?.status === 'succeeded' ? 'ready'
-        : videoGen?.status === 'failed' ? 'error'
+      status: effectiveStatus === 'succeeded' ? 'ready'
+        : effectiveStatus === 'failed' ? 'error'
         : videoGen ? 'generating' : 'pending',
       prompt: shot?.script_data?.description ?? '',
       thumbnailUrl: getActiveImageUrl(shot) ?? undefined,
-      url: videoGen?.status === 'succeeded' ? videoGen.url : undefined,
+      url: effectiveStatus === 'succeeded' ? videoGen?.url : undefined,
     }
   })
 }

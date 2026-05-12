@@ -41,13 +41,14 @@ function deriveClips(storyboard: StoryboardResult): VideoClip[] {
     const shot = storyboard.shots[key]
     // Use the video url if already succeeded
     const videoGen = shot.video?.generations?.[shot.video.generations.length - 1]
+    const effectiveStatus = (videoGen as any)?.fetch_status || videoGen?.status
     return {
       shotKey: key,
       duration: i === keys.length - 1 ? Math.max(3, TOTAL_S - base * (keys.length - 1)) : base,
-      status: videoGen?.status === 'succeeded' ? 'ready' : videoGen?.status === 'failed' ? 'error' : videoGen ? 'generating' : 'pending',
+      status: effectiveStatus === 'succeeded' ? 'ready' : effectiveStatus === 'failed' ? 'error' : videoGen ? 'generating' : 'pending',
       prompt: shot?.script_data?.description ?? '',
       thumbnailUrl: getActiveImageUrl(shot) ?? undefined,
-      url: videoGen?.status === 'succeeded' ? videoGen.url : undefined,
+      url: effectiveStatus === 'succeeded' ? videoGen?.url : undefined,
     }
   })
 }
@@ -690,7 +691,27 @@ export default function VideoPage() {
 
       try {
         const { status, storyboardResult } = await checkStoryboardVideoTasks(projectId)
-        current = { ...storyboardResult, projectTitle: current.projectTitle }
+        
+        // Merge the latest shots_status into the storyboard generations
+        const updatedShots = { ...storyboardResult.shots }
+        if (status?.shots_status) {
+          for (const [shotKey, taskStatus] of Object.entries(status.shots_status)) {
+            const shot = updatedShots[shotKey]
+            if (shot?.video?.generations?.length) {
+              const latestGen = shot.video.generations[shot.video.generations.length - 1]
+              if (latestGen.task_id === taskStatus.task_id) {
+                // Use fetch_status if available, otherwise fallback to the polled status
+                const realStatus = (taskStatus as any).fetch_status || taskStatus.status
+                latestGen.status = realStatus as any
+                if (taskStatus.video_url) {
+                  latestGen.url = taskStatus.video_url
+                }
+              }
+            }
+          }
+        }
+        
+        current = { ...storyboardResult, shots: updatedShots, projectTitle: current.projectTitle }
         persistStoryboard(current)
 
         const doneCount = Object.values(status.shots_status)

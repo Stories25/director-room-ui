@@ -247,9 +247,18 @@ export async function checkStoryboardVideoTasks(
   const inner = data?.data ?? data
   const storyboard = inner?.storyboard ?? data?.storyboard
   if (!storyboard) throw new Error(`No storyboard in batch status response: ${JSON.stringify(data)}`)
+  
+  // Patch: If the backend returns fetch_status, prefer it over status.
+  const shots_status = inner.shots_status ?? {}
+  for (const key of Object.keys(shots_status)) {
+    if (shots_status[key].fetch_status) {
+      shots_status[key].status = shots_status[key].fetch_status
+    }
+  }
+
   return {
     status: {
-      shots_status: inner.shots_status ?? {},
+      shots_status,
       all_done: inner.all_done ?? false,
       checked_count: inner.checked_count ?? 0,
     },
