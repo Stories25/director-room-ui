@@ -193,7 +193,7 @@ export async function generateStoryboardVideos(
   config?: Partial<VideoGenConfig>,
 ): Promise<{ fire: BatchVideoFireResult; storyboardResult: StoryboardResult }> {
   const body = {
-    model: config?.model ?? 'veo3.1',
+    model: config?.model ?? 'seedance2',
     duration: config?.duration ?? 4,
     ratio: config?.ratio ?? '1280:720',
   }

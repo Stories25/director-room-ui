@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import fixWebmDuration from 'fix-webm-duration'
 import { useRouter, useParams } from 'next/navigation'
-import { Film, Play, ArrowRight, ArrowLeft, Loader2, AlertCircle, AlertTriangle, RefreshCw, Clock } from 'lucide-react'
+import { Film, Play, ArrowRight, ArrowLeft, Loader2, AlertCircle, AlertTriangle, RefreshCw, Clock, X } from 'lucide-react'
 import type { VideoClip, StoryboardResult, StoryboardShot, BatchVideoFireResult, VideoGenConfig } from '@/lib/types'
 import { getPendingVideoTasks, isVideoAll } from '@/lib/types'
 import { generateShotVideo, checkVideoTask, generateStoryboardVideos, checkStoryboardVideoTasks } from '@/lib/argon-browser'
@@ -338,6 +338,7 @@ function VideoPlayer({
                     className="text-[10px] font-slate px-2 py-1 rounded border outline-none"
                     style={{ background: 'var(--surface-2)', color: 'var(--text-secondary)', borderColor: 'var(--border-subtle)' }}
                   >
+                    <option value="seedance2">seedance2</option>
                     <option value="veo3.1">veo3.1</option>
                   </select>
                   <select
@@ -409,8 +410,8 @@ function ClipRow({
   index,
   shot,
   isFirst,
-  onRegenerate,
   onCheckStatus,
+  onOpenDrawer,
   isRegenerating,
   isChecking,
 }: {
@@ -418,8 +419,8 @@ function ClipRow({
   index: number
   shot?: StoryboardShot
   isFirst: boolean
-  onRegenerate: (shotKey: string) => void
   onCheckStatus: (shotKey: string) => void
+  onOpenDrawer: (shotKey: string) => void
   isRegenerating: boolean
   isChecking: boolean
 }) {
@@ -433,7 +434,7 @@ function ClipRow({
 
   return (
     <div
-      className="flex gap-5 py-5 transition-colors duration-150"
+      className="flex gap-5 py-5 transition-colors duration-150 cursor-pointer"
       style={{
         borderTop: isFirst ? 'none' : '1px solid var(--border-subtle)',
         background: hovered ? 'var(--surface-1)' : 'transparent',
@@ -441,6 +442,7 @@ function ClipRow({
         padding: hovered ? '20px 16px' : '20px 0',
         margin: hovered ? '0 -16px' : '0',
       }}
+      onClick={() => onOpenDrawer(clip.shotKey)}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
@@ -482,7 +484,7 @@ function ClipRow({
           <button
             className="absolute inset-0 flex items-center justify-center"
             style={{ background: 'rgba(0,0,0,0.45)' }}
-            onClick={() => setPlaying(true)}
+            onClick={e => { e.stopPropagation(); setPlaying(true) }}
           >
             <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(4px)' }}>
               <Play className="w-4 h-4 fill-white text-white ml-0.5" />
@@ -616,7 +618,7 @@ function ClipRow({
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => onCheckStatus(clip.shotKey)}
+              onClick={e => { e.stopPropagation(); onCheckStatus(clip.shotKey) }}
               disabled={isChecking}
             >
               {isChecking
@@ -629,7 +631,7 @@ function ClipRow({
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => onRegenerate(clip.shotKey)}
+              onClick={e => { e.stopPropagation(); onOpenDrawer(clip.shotKey) }}
               disabled={isRegenerating}
             >
               {isRegenerating
@@ -641,6 +643,212 @@ function ClipRow({
         </div>
       </div>
     </div>
+  )
+}
+
+// ─── Clip Drawer ─────────────────────────────────────────────────────────────
+
+function ClipDrawer({
+  shotKey,
+  shot,
+  onClose,
+  onRegenerate,
+  isRegenerating,
+}: {
+  shotKey: string
+  shot: StoryboardShot
+  onClose: () => void
+  onRegenerate: (shotKey: string) => void
+  isRegenerating: boolean
+}) {
+  const [playingVersion, setPlayingVersion] = useState<number | null>(null)
+  const generations = shot.video?.generations ?? []
+  const activeVersion = shot.video?.active ?? 0
+  const sd = shot.script_data
+
+  const sortedGens = [...generations].sort((a, b) => (b.version ?? 0) - (a.version ?? 0))
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 z-40"
+        style={{ background: 'rgba(0,0,0,0.35)' }}
+        onClick={onClose}
+      />
+
+      {/* Drawer panel */}
+      <div
+        className="fixed right-0 top-0 h-full z-50 flex flex-col"
+        style={{ width: 480, background: 'var(--surface-1)', borderLeft: '1px solid var(--border-subtle)', boxShadow: '-8px 0 32px rgba(0,0,0,0.15)' }}
+      >
+        {/* Header */}
+        <div className="flex-none flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
+          <div className="flex items-center gap-3">
+            <span
+              className="text-[9px] font-slate px-1.5 py-0.5 rounded border"
+              style={{ color: 'var(--accent-amber)', borderColor: 'rgba(170,136,68,0.3)', background: 'rgba(170,136,68,0.08)' }}
+            >
+              {shotKey}
+            </span>
+            <h3 className="text-sm font-light" style={{ color: 'var(--text-primary)' }}>Generation History</h3>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-7 h-7 rounded flex items-center justify-center transition-colors"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Shot meta */}
+        <div className="flex-none px-5 py-4 border-b" style={{ borderColor: 'var(--border-subtle)', background: 'var(--surface-2)' }}>
+          <p className="text-sm font-light leading-relaxed mb-2" style={{ color: 'var(--text-primary)' }}>
+            {sd.description}
+          </p>
+          <div className="flex items-center gap-4">
+            {sd.framing && (
+              <p className="text-[11px] font-slate" style={{ color: 'var(--text-muted)' }}>
+                <span style={{ color: 'var(--text-tertiary)' }}>Shot</span> — {sd.framing}
+              </p>
+            )}
+            {sd.mood && (
+              <p className="text-[11px] font-slate" style={{ color: 'var(--text-muted)' }}>
+                <span style={{ color: 'var(--text-tertiary)' }}>Mood</span> — {sd.mood}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Generations list */}
+        <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
+          {sortedGens.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 gap-3">
+              <Film className="w-8 h-8" style={{ color: 'var(--border-standard)' }} />
+              <p className="text-xs font-slate" style={{ color: 'var(--text-muted)' }}>No generations yet</p>
+            </div>
+          ) : (
+            sortedGens.map(gen => {
+              const version = gen.version
+              const isActive = version !== undefined && version === activeVersion
+              const isPlaying = version !== undefined && playingVersion === version
+              const succeeded = gen.status === 'succeeded'
+              const failed = gen.status === 'failed'
+              const pending = gen.status === 'pending' || gen.status === 'processing'
+
+              return (
+                <div
+                  key={gen.task_id}
+                  className="rounded border overflow-hidden"
+                  style={{
+                    borderColor: isActive ? 'rgba(170,136,68,0.5)' : 'var(--border-subtle)',
+                    background: isActive ? 'rgba(170,136,68,0.03)' : 'var(--surface-2)',
+                  }}
+                >
+                  {/* Card header row */}
+                  <div className="flex items-center gap-2 px-4 py-3 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
+                    {version !== undefined && (
+                      <span
+                        className="text-[9px] font-slate px-1.5 py-0.5 rounded"
+                        style={{ background: 'var(--surface-1)', color: 'var(--text-tertiary)', border: '1px solid var(--border-subtle)' }}
+                      >
+                        v{version}
+                      </span>
+                    )}
+                    {gen.model && (
+                      <span
+                        className="text-[9px] font-slate px-1.5 py-0.5 rounded border"
+                        style={{ color: 'var(--text-secondary)', borderColor: 'var(--border-subtle)', background: 'var(--surface-1)' }}
+                      >
+                        {gen.model}
+                      </span>
+                    )}
+                    <span
+                      className="text-[9px] font-slate px-1.5 py-0.5 rounded uppercase tracking-wide"
+                      style={{
+                        background: failed ? 'rgba(204,68,68,0.10)' : succeeded ? 'rgba(90,138,90,0.10)' : 'rgba(0,0,0,0.04)',
+                        color: failed ? 'var(--accent-red)' : succeeded ? 'var(--accent-green)' : 'var(--text-muted)',
+                        border: `1px solid ${failed ? 'rgba(204,68,68,0.2)' : succeeded ? 'rgba(90,138,90,0.2)' : 'var(--border-subtle)'}`,
+                      }}
+                    >
+                      {pending ? 'Rendering' : gen.status}
+                    </span>
+                    {isActive && (
+                      <span
+                        className="text-[9px] font-slate px-1.5 py-0.5 rounded uppercase tracking-wide ml-auto"
+                        style={{ color: 'var(--accent-amber)', background: 'rgba(170,136,68,0.1)', border: '1px solid rgba(170,136,68,0.25)' }}
+                      >
+                        Active
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Video player */}
+                  {gen.url && succeeded && (
+                    <div className="relative w-full" style={{ aspectRatio: '16/9', background: '#000' }}>
+                      {!isPlaying ? (
+                        <button
+                          className="absolute inset-0 flex items-center justify-center w-full"
+                          onClick={() => setPlayingVersion(version ?? null)}
+                          style={{ background: 'rgba(0,0,0,0.3)' }}
+                        >
+                          <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(4px)' }}>
+                            <Play className="w-5 h-5 fill-white text-white ml-0.5" />
+                          </div>
+                        </button>
+                      ) : (
+                        <video
+                          className="w-full h-full object-cover"
+                          src={gen.url}
+                          autoPlay
+                          controls
+                          onEnded={() => setPlayingVersion(null)}
+                        />
+                      )}
+                    </div>
+                  )}
+
+                  {/* Video prompt */}
+                  {gen.video_prompt && (
+                    <div className="px-4 pt-3 pb-2">
+                      <p className="text-[11px] font-slate leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+                        {gen.video_prompt}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Timestamp */}
+                  {gen.created_at > 0 && (
+                    <div className="px-4 pb-3">
+                      <p className="text-[10px] font-slate" style={{ color: 'var(--text-muted)', opacity: 0.5 }}>
+                        {new Date(gen.created_at * 1000).toLocaleString()}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )
+            })
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex-none px-5 py-4 border-t" style={{ borderColor: 'var(--border-subtle)', background: 'var(--surface-1)' }}>
+          <Button
+            variant="primary"
+            size="md"
+            className="w-full justify-center gap-2"
+            onClick={() => onRegenerate(shotKey)}
+            disabled={isRegenerating}
+          >
+            {isRegenerating
+              ? <><Loader2 className="w-3 h-3 animate-spin" /> Regenerating…</>
+              : <><RefreshCw className="w-3 h-3" /> Regenerate Clip</>
+            }
+          </Button>
+        </div>
+      </div>
+    </>
   )
 }
 
@@ -659,8 +867,9 @@ export default function VideoPage() {
   const [genProgress, setGenProgress] = useState<{ done: number; total: number } | null>(null)
   const [skippedShots, setSkippedShots] = useState<BatchVideoFireResult['skipped']>([])
   const [fireFailures, setFireFailures] = useState<BatchVideoFireResult['failures']>([])
+  const [drawerShotKey, setDrawerShotKey] = useState<string | null>(null)
   const [videoConfig, setVideoConfig] = useState<VideoGenConfig>({
-    model: 'veo3.1',
+    model: 'seedance2',
     duration: 4,
     ratio: '1280:720',
   })
@@ -1076,8 +1285,8 @@ export default function VideoPage() {
                     index={i}
                     shot={storyboard?.shots[clip.shotKey]}
                     isFirst={i === 0}
-                    onRegenerate={handleRegenerateClip}
                     onCheckStatus={handleCheckStatus}
+                    onOpenDrawer={setDrawerShotKey}
                     isRegenerating={regeneratingClip === clip.shotKey}
                     isChecking={checkingClip === clip.shotKey}
                   />
@@ -1111,6 +1320,17 @@ export default function VideoPage() {
           </Button>
         </div>
       </div>
+
+      {/* ── Clip drawer ── */}
+      {drawerShotKey && storyboard?.shots[drawerShotKey] && (
+        <ClipDrawer
+          shotKey={drawerShotKey}
+          shot={storyboard.shots[drawerShotKey]}
+          onClose={() => setDrawerShotKey(null)}
+          onRegenerate={key => { setDrawerShotKey(null); handleRegenerateClip(key) }}
+          isRegenerating={regeneratingClip === drawerShotKey}
+        />
+      )}
     </main>
   )
 }

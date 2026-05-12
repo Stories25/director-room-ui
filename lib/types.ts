@@ -81,10 +81,15 @@ export interface StoryboardShotData {
 export type VideoGenStatus = 'pending' | 'processing' | 'succeeded' | 'failed'
 
 export interface StoryboardShotVideoGeneration {
+  version?: number
   task_id: string
+  video_prompt?: string
+  model?: string
   status: VideoGenStatus
   url?: string
   prompt?: string
+  started_at?: number
+  source_image_version?: number
   created_at: number
 }
 
