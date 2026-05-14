@@ -642,7 +642,7 @@ export default function SoundPage() {
               Composing soundtrack…
             </p>
             <p className="text-xs font-slate" style={{ color: 'var(--text-muted)' }}>
-              ElevenLabs is scoring your teaser via Runway
+              ElevenLabs is scoring your teaser
             </p>
           </div>
         </div>

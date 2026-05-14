@@ -6,7 +6,7 @@ import { useRouter, useParams } from 'next/navigation'
 import { Film, Play, ArrowRight, ArrowLeft, Loader2, AlertCircle, AlertTriangle, RefreshCw, Clock, X } from 'lucide-react'
 import type { VideoClip, StoryboardResult, StoryboardShot, BatchVideoFireResult, VideoGenConfig } from '@/lib/types'
 import { getPendingVideoTasks, isVideoAll } from '@/lib/types'
-import { generateShotVideo, checkVideoTask, generateStoryboardVideos, checkStoryboardVideoTasks } from '@/lib/argon-browser'
+import { generateShotVideo, checkVideoTask, generateStoryboardVideos, checkStoryboardVideoTasks, setVideoActive } from '@/lib/argon-browser'
 import { Sprocket, TopBar } from '@/components/shell/Shell'
 import WorkflowStepper from '@/components/WorkflowStepper'
 import Button from '@/components/ui/Button'
@@ -39,8 +39,10 @@ function deriveClips(storyboard: StoryboardResult): VideoClip[] {
   const base = Math.floor(TOTAL_S / Math.max(keys.length, 1))
   return keys.map((key, i) => {
     const shot = storyboard.shots[key]
-    // Use the video url if already succeeded
-    const videoGen = shot.video?.generations?.[shot.video.generations.length - 1]
+    // Use the active video generation (falling back to latest if not found)
+    const videoGens = shot.video?.generations ?? []
+    const activeVideoVersion = shot.video?.active
+    const videoGen = videoGens.find(g => g.version === activeVideoVersion) ?? videoGens[videoGens.length - 1]
     const effectiveStatus = (videoGen as any)?.fetch_status || videoGen?.status
     return {
       shotKey: key,
@@ -654,14 +656,17 @@ function ClipDrawer({
   onClose,
   onRegenerate,
   isRegenerating,
+  onSetActive,
 }: {
   shotKey: string
   shot: StoryboardShot
   onClose: () => void
-  onRegenerate: (shotKey: string) => void
+  onRegenerate: (shotKey: string, model: string) => void
   isRegenerating: boolean
+  onSetActive: (shotKey: string, version: number) => void
 }) {
   const [playingVersion, setPlayingVersion] = useState<number | null>(null)
+  const [selectedModel, setSelectedModel] = useState('seedance2')
   const generations = shot.video?.generations ?? []
   const activeVersion = shot.video?.active ?? 0
   const sd = shot.script_data
@@ -774,14 +779,25 @@ function ClipDrawer({
                     >
                       {pending ? 'Rendering' : gen.status}
                     </span>
-                    {isActive && (
-                      <span
-                        className="text-[9px] font-slate px-1.5 py-0.5 rounded uppercase tracking-wide ml-auto"
-                        style={{ color: 'var(--accent-amber)', background: 'rgba(170,136,68,0.1)', border: '1px solid rgba(170,136,68,0.25)' }}
-                      >
-                        Active
-                      </span>
-                    )}
+                    <div className="flex items-center gap-2 ml-auto">
+                      {isActive && (
+                        <span
+                          className="text-[9px] font-slate px-1.5 py-0.5 rounded uppercase tracking-wide"
+                          style={{ color: 'var(--accent-amber)', background: 'rgba(170,136,68,0.1)', border: '1px solid rgba(170,136,68,0.25)' }}
+                        >
+                          Active
+                        </span>
+                      )}
+                      {!isActive && succeeded && version !== undefined && (
+                        <button
+                          className="text-[9px] font-slate px-2 py-0.5 rounded uppercase tracking-wide transition-colors"
+                          style={{ color: 'var(--text-secondary)', background: 'var(--surface-1)', border: '1px solid var(--border-standard)' }}
+                          onClick={() => onSetActive(shotKey, version)}
+                        >
+                          Set as Active
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   {/* Video player */}
@@ -833,12 +849,36 @@ function ClipDrawer({
         </div>
 
         {/* Footer */}
-        <div className="flex-none px-5 py-4 border-t" style={{ borderColor: 'var(--border-subtle)', background: 'var(--surface-1)' }}>
+        <div className="flex-none px-5 pt-3 pb-5 border-t space-y-3" style={{ borderColor: 'var(--border-subtle)', background: 'var(--surface-1)' }}>
+          <div className="space-y-1.5">
+            <p className="text-[9px] font-slate uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>Model</p>
+            <div className="grid grid-cols-4 gap-1.5">
+              {(['seedance2', 'veo3.1', 'gen4_turbo', 'gen4.5'] as const).map(m => {
+                const active = selectedModel === m
+                return (
+                  <button
+                    key={m}
+                    disabled={isRegenerating}
+                    onClick={() => setSelectedModel(m)}
+                    className="py-1.5 rounded text-[9px] font-slate transition-all"
+                    style={{
+                      background: active ? 'rgba(170,136,68,0.12)' : 'var(--surface-2)',
+                      color: active ? 'var(--accent-amber)' : 'var(--text-secondary)',
+                      border: `1px solid ${active ? 'rgba(170,136,68,0.4)' : 'var(--border-subtle)'}`,
+                      opacity: isRegenerating ? 0.5 : 1,
+                    }}
+                  >
+                    {m}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
           <Button
             variant="primary"
             size="md"
             className="w-full justify-center gap-2"
-            onClick={() => onRegenerate(shotKey)}
+            onClick={() => onRegenerate(shotKey, selectedModel)}
             disabled={isRegenerating}
           >
             {isRegenerating
@@ -1044,8 +1084,6 @@ export default function VideoPage() {
       if (fire.fired_count > 0) {
         setGenProgress({ done: 0, total: fire.fired_count })
         await runPollLoop(updated, fire.fired_count)
-      } else if (fire.skipped_count > 0 && fire.fired_count === 0) {
-        setError('All shots were skipped — no new videos to generate.')
       }
 
       if (mountedRef.current) setPageState('ready')
@@ -1059,13 +1097,13 @@ export default function VideoPage() {
   }, [storyboard, projectId, persistStoryboard, runPollLoop, videoConfig])
 
   // ── Regenerate a single clip ──────────────────────────────────────────────
-  const handleRegenerateClip = useCallback(async (shotKey: string) => {
+  const handleRegenerateClip = useCallback(async (shotKey: string, model?: string) => {
     if (!storyboard || regeneratingClip) return
     setRegeneratingClip(shotKey)
     setError(null)
 
     try {
-      const gen = await generateShotVideo(projectId, shotKey)
+      const gen = await generateShotVideo(projectId, shotKey, model)
       const prevGens = storyboard.shots[shotKey].video?.generations ?? []
       let current = {
         ...storyboard,
@@ -1147,6 +1185,27 @@ export default function VideoPage() {
       if (mountedRef.current) setCheckingClip(null)
     }
   }, [storyboard, projectId, persistStoryboard, checkingClip, refetchProject])
+
+  // ── Set active video version ──────────────────────────────────────────────
+  const handleSetActive = useCallback((shotKey: string, version: number) => {
+    if (!storyboard) return
+    const shot = storyboard.shots[shotKey]
+    if (!shot?.video) return
+    const updated: StoryboardResult = {
+      ...storyboard,
+      shots: {
+        ...storyboard.shots,
+        [shotKey]: {
+          ...shot,
+          video: { ...shot.video, active: version },
+        },
+      },
+    }
+    persistStoryboard(updated)
+    setVideoActive(projectId, shotKey, version).catch((err: unknown) =>
+      console.warn('[video] setVideoActive backend call failed (local state updated):', err)
+    )
+  }, [storyboard, projectId, persistStoryboard])
 
   // ── Loading ──────────────────────────────────────────────────────────────
   if (pageState === 'loading') {
@@ -1327,8 +1386,9 @@ export default function VideoPage() {
           shotKey={drawerShotKey}
           shot={storyboard.shots[drawerShotKey]}
           onClose={() => setDrawerShotKey(null)}
-          onRegenerate={key => { setDrawerShotKey(null); handleRegenerateClip(key) }}
+          onRegenerate={(key, model) => { setDrawerShotKey(null); handleRegenerateClip(key, model) }}
           isRegenerating={regeneratingClip === drawerShotKey}
+          onSetActive={handleSetActive}
         />
       )}
     </main>

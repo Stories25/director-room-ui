@@ -144,10 +144,11 @@ function normalizeVideoStatus(raw: string | undefined): import('./types').VideoG
   }
 }
 
-export async function generateShotVideo(projectId: string, shotKey: string): Promise<StoryboardShotVideoGeneration> {
+export async function generateShotVideo(projectId: string, shotKey: string, model?: string): Promise<StoryboardShotVideoGeneration> {
   const res = await fetch(`${BASE_URL}/runway/projects/${projectId}/shots/${shotKey}/video`, {
     method: 'POST',
     headers: headers(),
+    body: model ? JSON.stringify({ model }) : undefined,
   })
   if (!res.ok) {
     const err = await res.text()
@@ -287,6 +288,18 @@ export async function mixSound(projectId: string, trackId: string): Promise<Soun
 }
 
 // ─── GET /api/sound/tracks ──────────────────────────────────────────────────
+
+export async function setVideoActive(projectId: string, shotKey: string, version: number): Promise<void> {
+  const res = await fetch(`${BASE_URL}/runway/projects/${projectId}/shots/${shotKey}/video`, {
+    method: 'PATCH',
+    headers: headers(),
+    body: JSON.stringify({ active: version }),
+  })
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error(`Failed to set active video for shot ${shotKey} (${res.status}): ${err}`)
+  }
+}
 
 export async function getSoundTracks(): Promise<SoundTrack[]> {
   const res = await fetch('/api/sound/tracks')
