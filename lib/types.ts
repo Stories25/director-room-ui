@@ -194,7 +194,7 @@ export function isVideoAll(shots: Record<string, StoryboardShot>): boolean {
     const gens = shots[key].video?.generations
     if (!gens || gens.length === 0) return false
     const active = shots[key].video!.active
-    const gen = gens.find(g => g.task_id === String(active)) ?? gens[gens.length - 1]
+    const gen = gens.find(g => g.version === active) ?? gens[gens.length - 1]
     return gen?.status === 'succeeded'
   })
 }
