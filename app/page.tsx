@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowRight, Plus } from 'lucide-react'
 import type { ProjectListItem } from '@/lib/argon'
@@ -25,7 +25,18 @@ function formatRelativeDate(iso: string): string {
 
 function ProjectCard({ project, onClick }: { project: ProjectListItem; onClick: () => void }) {
   const [imgLoaded, setImgLoaded] = useState(false)
+  const [isHovered, setIsHovered] = useState(false)
+  const videoRef = useRef<HTMLVideoElement>(null)
   const hasImage = !!project.thumbnail_url
+  const hasVideo = !!project.final_video_url
+
+  useEffect(() => {
+    if (isHovered && hasVideo) {
+      videoRef.current?.play().catch(() => {})
+    } else {
+      videoRef.current?.pause()
+    }
+  }, [isHovered, hasVideo])
 
   return (
     <button
@@ -37,11 +48,13 @@ function ProjectCard({ project, onClick }: { project: ProjectListItem; onClick: 
         borderRadius: 4,
       }}
       onMouseEnter={e => {
+        setIsHovered(true)
         e.currentTarget.style.borderColor = 'var(--border-emphasis)'
         e.currentTarget.style.boxShadow = '0 4px 32px rgba(170,136,68,0.10)'
         e.currentTarget.style.transform = 'translateY(-2px)'
       }}
       onMouseLeave={e => {
+        setIsHovered(false)
         e.currentTarget.style.borderColor = 'var(--border-standard)'
         e.currentTarget.style.boxShadow = 'none'
         e.currentTarget.style.transform = 'translateY(0)'
@@ -63,6 +76,18 @@ function ProjectCard({ project, onClick }: { project: ProjectListItem; onClick: 
               onLoad={() => setImgLoaded(true)}
               onError={() => setImgLoaded(true)}
             />
+            {/* Hover video preview (muted, loops) */}
+            {hasVideo && (
+              <video
+                ref={videoRef}
+                src={project.final_video_url!}
+                muted
+                loop
+                playsInline
+                preload="none"
+                className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${isHovered ? 'opacity-100' : 'opacity-0'}`}
+              />
+            )}
             {/* Hover overlay */}
             <div
               className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center z-10"

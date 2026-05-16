@@ -79,6 +79,7 @@ export interface ProjectListItem {
   created_at: string
   updated_at: string
   thumbnail_url: string | null
+  final_video_url: string | null
 }
 
 export interface ProjectDetail extends ProjectListItem {
@@ -92,6 +93,7 @@ export interface ProjectDetail extends ProjectListItem {
     shots: Record<string, import('./types').StoryboardShot & { video?: { active: number; generations: unknown[] }; audio?: { active: number; generations: unknown[] } }>
   } | null
   bgms?: Bgm[]
+  final_video_url: string | null
 }
 
 export async function getProjects(): Promise<ProjectListItem[]> {

@@ -158,7 +158,8 @@ function BgmPicker({ bgms, activeId, onSelect }: {
 
 type StitchState = 'idle' | 'stitching' | 'ready' | 'error'
 type ExportState = 'idle' | 'converting' | 'done' | 'error'
-type PageState  = 'loading' | 'ready' | 'error'
+type SaveState   = 'idle' | 'saving' | 'saved' | 'error'
+type PageState   = 'loading' | 'ready' | 'error'
 
 // ─── Export Page ──────────────────────────────────────────────────────────────
 
@@ -187,6 +188,11 @@ export default function ExportPage() {
   const [videoVolume,  setVideoVolume]  = useState(1.0)
   const [isPlaying,    setIsPlaying]    = useState(false)
 
+  // ── Saved video (persisted to server)
+  const [savedVideoUrl, setSavedVideoUrl] = useState<string | null>(null)
+  const [saveState,     setSaveState]     = useState<SaveState>('idle')
+  const [saveError,     setSaveError]     = useState<string | null>(null)
+
   // ── Phase 3: Export → MP4
   const [exportState,    setExportState]    = useState<ExportState>('idle')
   const [exportProgress, setExportProgress] = useState(0)
@@ -208,6 +214,9 @@ export default function ExportPage() {
   const sourcedElements = useRef(new WeakSet<HTMLMediaElement>())
 
   const activeBgm = bgms.find(b => b.id === activeBgmId) ?? bgms[0] ?? null
+  const hasSavedVideo = !!savedVideoUrl
+  const [savedIsPlaying, setSavedIsPlaying] = useState(false)
+  const savedVideoRef = useRef<HTMLVideoElement | null>(null)
 
   // ── Cleanup blob URLs on unmount
   useEffect(() => {
@@ -255,6 +264,10 @@ export default function ExportPage() {
         if (existingBgms.length > 0) {
           setBgms(existingBgms)
           setActiveBgmId(existingBgms[existingBgms.length - 1].id)
+        }
+
+        if (project.final_video_url) {
+          setSavedVideoUrl(project.final_video_url)
         }
 
         setPageState('ready')
@@ -604,6 +617,129 @@ export default function ExportPage() {
     }
   }, [previewBlobUrl, activeBgm, bgmVolume, videoVolume, projectTitle, exportState])
 
+  // ── Phase 4: Save to Project
+  const handleSaveVideo = useCallback(async () => {
+    if (saveState === 'saving') return
+
+    if (!previewBlobUrl) {
+      setSaveError('Stitch the video first')
+      setSaveState('error')
+      return
+    }
+
+    setSaveState('saving')
+    setSaveError(null)
+
+    try {
+      // If MP4 hasn't been generated yet, generate it first (same as handleDownloadMp4)
+      let blobUrl = mp4BlobRef.current
+
+      if (!blobUrl) {
+        const { FFmpeg }   = await import('@ffmpeg/ffmpeg')
+        const { fetchFile, toBlobURL } = await import('@ffmpeg/util')
+
+        const ff = new FFmpeg()
+        const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/umd'
+        await ff.load({
+          coreURL:   await toBlobURL(`${baseURL}/ffmpeg-core.js`,   'text/javascript'),
+          wasmURL:   await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+        })
+
+        const webmData = await fetchFile(previewBlobUrl)
+        await ff.writeFile('input.webm', webmData)
+
+        let ffmpegCmd: string[]
+        if (activeBgm?.url) {
+          const bgmData = await fetchFile(activeBgm.url)
+          await ff.writeFile('bgm.mp3', bgmData)
+          const vidVol = videoVolume.toFixed(3)
+          const bgmVol = bgmVolume.toFixed(3)
+          ffmpegCmd = [
+            '-i', 'input.webm',
+            '-i', 'bgm.mp3',
+            '-filter_complex',
+            `[0:a]volume=${vidVol}[va];[1:a]volume=${bgmVol}[ba];[va][ba]amix=inputs=2:duration=first[aout]`,
+            '-map', '0:v',
+            '-map', '[aout]',
+            '-c:v', 'libx264',
+            '-preset', 'fast',
+            '-crf', '23',
+            '-c:a', 'aac',
+            '-b:a', '192k',
+            '-movflags', 'faststart',
+            '-shortest',
+            'output.mp4',
+          ]
+        } else {
+          ffmpegCmd = [
+            '-i', 'input.webm',
+            '-c:v', 'libx264',
+            '-preset', 'fast',
+            '-crf', '23',
+            '-c:a', 'aac',
+            '-b:a', '192k',
+            '-movflags', 'faststart',
+            'output.mp4',
+          ]
+        }
+
+        await ff.exec(ffmpegCmd)
+
+        const data = await ff.readFile('output.mp4')
+        const raw = data instanceof Uint8Array ? new Uint8Array(data).buffer : new TextEncoder().encode(String(data)).buffer
+        const mp4Blob = new Blob([raw], { type: 'video/mp4' })
+        const url = URL.createObjectURL(mp4Blob)
+        mp4BlobRef.current = url
+        if (mountedRef.current) {
+          setMp4Url(url)
+          setExportState('done')
+        }
+        blobUrl = url
+      }
+
+      const res = await fetch(blobUrl)
+      const blob = await res.blob()
+
+      const formData = new FormData()
+      formData.append('file', blob, `${projectTitle || 'teaser'}.mp4`)
+
+      const uploadRes = await fetch(`/api/projects/${projectId}/final-video`, {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!uploadRes.ok) {
+        const err = await uploadRes.json()
+        throw new Error(err.error || 'Upload failed')
+      }
+
+      const { url } = await uploadRes.json()
+
+      if (!mountedRef.current) return
+      setSavedVideoUrl(url)
+      setSaveState('saved')
+    } catch (err) {
+      console.error('[export] Save failed:', err)
+      if (mountedRef.current) {
+        setSaveError(String(err))
+        setSaveState('error')
+      }
+    }
+  }, [previewBlobUrl, activeBgm, bgmVolume, videoVolume, projectId, projectTitle, saveState])
+
+  const handleReStitch = useCallback(() => {
+    setSavedVideoUrl(null)
+    setSaveState('idle')
+    setSaveError(null)
+    setStitchState('idle')
+    setExportState('idle')
+    setMp4Url(null)
+    setIsPlaying(false)
+    if (mp4BlobRef.current) { URL.revokeObjectURL(mp4BlobRef.current); mp4BlobRef.current = null }
+    if (previewBlobRef.current) { URL.revokeObjectURL(previewBlobRef.current); previewBlobRef.current = null }
+    setPreviewBlobUrl(null)
+  }, [])
+
   // ── Derived
   const displayClips    = storyboard ? deriveClips(storyboard) : []
   const readyClipCount  = displayClips.filter(c => c.status === 'ready' && c.url).length
@@ -685,7 +821,9 @@ export default function ExportPage() {
               Final Export
             </h1>
             <p className="text-xs font-slate mt-1" style={{ color: 'var(--text-muted)' }}>
-              Preview your film, adjust the mix, then download as MP4
+              {hasSavedVideo
+                ? 'Your teaser is saved — preview, download, or re-stitch to update'
+                : 'Preview your film, adjust the mix, then download as MP4'}
             </p>
           </div>
 
@@ -708,8 +846,53 @@ export default function ExportPage() {
                 ))}
               </div>
 
+              {/* Saved video from server */}
+              {hasSavedVideo && (
+                <>
+                  <video
+                    ref={savedVideoRef}
+                    src={savedVideoUrl!}
+                    className="w-full h-full object-cover"
+                    playsInline
+                    preload="auto"
+                    onEnded={() => setSavedIsPlaying(false)}
+                  />
+                  <button
+                    onClick={async () => {
+                      const v = savedVideoRef.current
+                      if (!v) return
+                      if (savedIsPlaying) {
+                        v.pause()
+                        setSavedIsPlaying(false)
+                      } else {
+                        if (v.ended) v.currentTime = 0
+                        await v.play()
+                        setSavedIsPlaying(true)
+                      }
+                    }}
+                    className="absolute inset-0 flex items-center justify-center group"
+                    style={{ zIndex: 3, background: savedIsPlaying ? 'transparent' : 'rgba(0,0,0,0.35)' }}
+                  >
+                    {!savedIsPlaying && (
+                      <div
+                        className="w-14 h-14 rounded-full flex items-center justify-center transition-transform duration-150 group-hover:scale-110"
+                        style={{ background: 'rgba(255,255,255,0.1)', backdropFilter: 'blur(6px)' }}
+                      >
+                        <Play className="w-6 h-6 ml-0.5 fill-white text-white" />
+                      </div>
+                    )}
+                    {savedIsPlaying && (
+                      <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-150 w-14 h-14 rounded-full flex items-center justify-center"
+                        style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(6px)' }}>
+                        <Pause className="w-6 h-6 fill-white text-white" />
+                      </div>
+                    )}
+                  </button>
+                </>
+              )}
+
               {/* Preview video — unmuted so AudioContext can capture its audio track */}
-              {previewBlobUrl && (
+              {previewBlobUrl && !hasSavedVideo && (
                 <video
                   ref={videoRefCallback}
                   src={previewBlobUrl}
@@ -753,8 +936,8 @@ export default function ExportPage() {
                 </div>
               )}
 
-              {/* Idle — prompt to stitch */}
-              {stitchState === 'idle' && (
+              {/* Idle — prompt to stitch (only when no saved video) */}
+              {stitchState === 'idle' && !hasSavedVideo && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-6" style={{ zIndex: 3 }}>
                   <button
                     onClick={handleStitch}
@@ -775,7 +958,7 @@ export default function ExportPage() {
               )}
 
               {/* Ready — play / pause overlay */}
-              {stitchState === 'ready' && (
+              {stitchState === 'ready' && !hasSavedVideo && (
                 <button
                   onClick={handlePlayPause}
                   className="absolute inset-0 flex items-center justify-center group"
@@ -803,16 +986,20 @@ export default function ExportPage() {
             <div className="flex items-center justify-between px-5 py-3 border-t gap-4" style={{ borderColor: 'var(--border-subtle)' }}>
               <div className="flex items-center gap-2">
                 <div className="h-1.5 w-1.5 rounded-full" style={{
-                  background: stitchState === 'ready' ? 'var(--accent-green)'
+                  background: hasSavedVideo ? 'var(--accent-green)'
+                    : stitchState === 'ready' ? 'var(--accent-green)'
                     : stitchState === 'stitching' ? 'var(--accent-amber)'
                     : 'var(--text-muted)',
                 }} />
                 <span className="text-[10px] font-slate" style={{
-                  color: stitchState === 'ready' ? 'var(--accent-green)'
+                  color: hasSavedVideo ? 'var(--accent-green)'
+                    : stitchState === 'ready' ? 'var(--accent-green)'
                     : stitchState === 'stitching' ? 'var(--accent-amber)'
                     : 'var(--text-muted)',
                 }}>
-                  {stitchState === 'ready'
+                  {hasSavedVideo
+                    ? 'Saved — preview ready'
+                    : stitchState === 'ready'
                     ? isPlaying ? 'Playing preview' : 'Preview ready — click to play'
                     : stitchState === 'stitching' ? `Stitching… ${stitchProgress}%`
                     : 'Not yet prepared'}
@@ -820,7 +1007,7 @@ export default function ExportPage() {
               </div>
 
               <div className="flex items-center gap-2">
-                {stitchState === 'ready' && (
+                {stitchState === 'ready' && !hasSavedVideo && (
                   <Button variant="tertiary" size="sm" onClick={handleStitch} className="gap-1.5">
                     <RefreshCw className="w-2.5 h-2.5" /> Re-stitch
                   </Button>
@@ -833,48 +1020,91 @@ export default function ExportPage() {
           </div>
 
           {/* ── Audio Mix — live, no re-render ── */}
-          <div className="mb-8 rounded border" style={{
-            borderColor: 'var(--border-standard)',
-            background: 'var(--surface-1)',
-            opacity: stitchState !== 'ready' ? 0.5 : 1,
-            pointerEvents: stitchState !== 'ready' ? 'none' : 'auto',
-            transition: 'opacity 0.2s',
-          }}>
-            <div className="px-5 py-3 border-b flex items-center justify-between" style={{ borderColor: 'var(--border-subtle)' }}>
-              <div className="flex items-center gap-2">
-                <Settings2 className="w-3.5 h-3.5" style={{ color: 'var(--text-tertiary)' }} />
-                <span className="text-[10px] tracking-[0.2em] uppercase font-slate" style={{ color: 'var(--text-muted)' }}>
-                  Audio Mix
-                </span>
+          {!hasSavedVideo && (
+            <div className="mb-8 rounded border" style={{
+              borderColor: 'var(--border-standard)',
+              background: 'var(--surface-1)',
+              opacity: stitchState !== 'ready' ? 0.5 : 1,
+              pointerEvents: stitchState !== 'ready' ? 'none' : 'auto',
+              transition: 'opacity 0.2s',
+            }}>
+              <div className="px-5 py-3 border-b flex items-center justify-between" style={{ borderColor: 'var(--border-subtle)' }}>
+                <div className="flex items-center gap-2">
+                  <Settings2 className="w-3.5 h-3.5" style={{ color: 'var(--text-tertiary)' }} />
+                  <span className="text-[10px] tracking-[0.2em] uppercase font-slate" style={{ color: 'var(--text-muted)' }}>
+                    Audio Mix
+                  </span>
+                </div>
+                {stitchState === 'ready' && (
+                  <span className="text-[9px] font-slate" style={{ color: 'var(--accent-green)' }}>
+                    Live — no re-render needed
+                  </span>
+                )}
               </div>
-              {stitchState === 'ready' && (
-                <span className="text-[9px] font-slate" style={{ color: 'var(--accent-green)' }}>
-                  Live — no re-render needed
-                </span>
-              )}
+              <div className="px-5 py-1">
+                <GainSlider
+                  label="Video Audio"
+                  icon={<Film className="w-3.5 h-3.5" />}
+                  value={videoVolume}
+                  onChange={handleVideoVolumeChange}
+                  color="var(--text-secondary)"
+                  disabled={stitchState !== 'ready'}
+                />
+                <GainSlider
+                  label="BGM"
+                  icon={<Music className="w-3.5 h-3.5" />}
+                  value={bgmVolume}
+                  onChange={handleBgmVolumeChange}
+                  color="var(--accent-amber)"
+                  disabled={stitchState !== 'ready' || !activeBgm}
+                />
+              </div>
             </div>
-            <div className="px-5 py-1">
-              <GainSlider
-                label="Video Audio"
-                icon={<Film className="w-3.5 h-3.5" />}
-                value={videoVolume}
-                onChange={handleVideoVolumeChange}
-                color="var(--text-secondary)"
-                disabled={stitchState !== 'ready'}
-              />
-              <GainSlider
-                label="BGM"
-                icon={<Music className="w-3.5 h-3.5" />}
-                value={bgmVolume}
-                onChange={handleBgmVolumeChange}
-                color="var(--accent-amber)"
-                disabled={stitchState !== 'ready' || !activeBgm}
-              />
-            </div>
-          </div>
+          )}
 
-          {/* ── Download section ── */}
-          {stitchState === 'ready' && (
+          {/* ── Saved video section ── */}
+          {hasSavedVideo && (
+            <div
+              className="rounded border p-6"
+              style={{ borderColor: 'rgba(90,138,90,0.3)', background: 'rgba(90,138,90,0.05)' }}
+            >
+              <p className="text-sm font-light mb-1 text-center" style={{ color: 'var(--accent-green)' }}>
+                Video saved to project
+              </p>
+              <p className="text-[10px] font-slate mb-5 text-center" style={{ color: 'var(--text-muted)' }}>
+                {totalDuration}s · MP4 (H.264) · {readyClipCount} clips
+              </p>
+
+              <div className="flex flex-col items-center gap-3">
+                <a
+                  href={savedVideoUrl}
+                  download={`${projectTitle || 'teaser'}.mp4`}
+                  className="relative overflow-hidden rounded border px-8 py-3 flex items-center gap-3 transition-all duration-200 cursor-pointer"
+                  style={{
+                    borderColor: 'var(--accent-amber)',
+                    background: 'rgba(170,136,68,0.10)',
+                    color: 'var(--accent-amber)',
+                    minWidth: 220,
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Download className="w-4 h-4" />
+                  <span className="text-sm font-slate tracking-[0.08em]">Download MP4</span>
+                </a>
+
+                <Button variant="tertiary" size="sm" onClick={handleReStitch} className="gap-1.5">
+                  <RefreshCw className="w-2.5 h-2.5" /> Re-stitch to update
+                </Button>
+
+                <p className="text-[9px] font-slate" style={{ color: 'var(--text-muted)' }}>
+                  Saved to project — re-stitch to change mix or audio
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* ── Download section (new stitch flow) ── */}
+          {stitchState === 'ready' && !hasSavedVideo && (
             <div
               className="rounded border p-6"
               style={{ borderColor: 'rgba(170,136,68,0.3)', background: 'rgba(170,136,68,0.05)' }}
@@ -895,11 +1125,11 @@ export default function ExportPage() {
                 </div>
               )}
 
-              {/* Download button */}
+              {/* Download + Save buttons */}
               <div className="flex flex-col items-center gap-3">
                 <button
                   onClick={handleDownloadMp4}
-                  disabled={exportState === 'converting'}
+                  disabled={exportState === 'converting' || saveState === 'saving'}
                   className="relative overflow-hidden rounded border px-8 py-3 flex items-center gap-3 transition-all duration-200 cursor-pointer disabled:cursor-not-allowed"
                   style={{
                     borderColor: exportState === 'done' ? 'var(--accent-green)' : 'var(--accent-amber)',
@@ -936,6 +1166,38 @@ export default function ExportPage() {
                         ? 'Download again'
                         : 'Download MP4'}
                     </span>
+                  </span>
+                </button>
+
+                {/* Save to Project */}
+                {saveState === 'error' && (
+                  <p className="text-[10px]" style={{ color: 'var(--accent-red)' }}>{saveError}</p>
+                )}
+                <button
+                  onClick={handleSaveVideo}
+                  disabled={saveState === 'saving' || exportState === 'converting' || stitchState !== 'ready'}
+                  className="rounded border px-6 py-3 flex items-center gap-2.5 transition-all duration-200 cursor-pointer disabled:cursor-not-allowed"
+                  style={{
+                    borderColor: saveState === 'saved' ? 'var(--accent-green)' : 'var(--border-standard)',
+                    background: saveState === 'saved' ? 'rgba(90,138,90,0.08)' : 'transparent',
+                    color: saveState === 'saved' ? 'var(--accent-green)' : 'var(--text-secondary)',
+                    minWidth: 220,
+                    justifyContent: 'center',
+                  }}
+                >
+                  {saveState === 'saving' ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : saveState === 'saved' ? (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                    </svg>
+                  ) : (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0z" />
+                    </svg>
+                  )}
+                  <span className="text-sm font-slate tracking-[0.08em]">
+                    {saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved' : 'Save to Project'}
                   </span>
                 </button>
 
@@ -981,9 +1243,23 @@ export default function ExportPage() {
       <div className="flex-none w-full border-t" style={{ borderColor: 'var(--border-subtle)', background: 'var(--surface-1)' }}>
         <div className="flex items-center justify-between py-4"
           style={{ maxWidth: 800, margin: '0 auto', paddingLeft: 40, paddingRight: 40 }}>
-          <Button variant="secondary" size="sm" onClick={() => router.push(`/sound/${projectId}`)}>
-            <ArrowLeft className="w-3 h-3" /> Sound
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" size="sm" onClick={() => router.push(`/sound/${projectId}`)}>
+              <ArrowLeft className="w-3 h-3" /> Sound
+            </Button>
+            {hasSavedVideo && (
+              <Button variant="tertiary" size="sm" onClick={() => router.push('/')}>
+                Back to Projects
+              </Button>
+            )}
+          </div>
+          {hasSavedVideo && savedVideoUrl && (
+            <a href={savedVideoUrl} download={`${projectTitle || 'teaser'}.mp4`}>
+              <Button variant="secondary" size="sm" className="gap-2">
+                <Download className="w-3 h-3" /> Download MP4
+              </Button>
+            </a>
+          )}
           {exportState === 'done' && mp4Url && (
             <a href={mp4Url} download={`${projectTitle || 'teaser'}.mp4`}>
               <Button variant="secondary" size="sm" className="gap-2">
